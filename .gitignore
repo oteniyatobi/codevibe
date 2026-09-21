@@ -82,3 +82,4 @@ temp/
 # yarn.lock
 # pnpm-lock.yaml
 *.zip
+*.tgz
