@@ -1,0 +1,162 @@
+{
+  "reportVersion": "1.0",
+  "assignmentId": "asgn-hw1-2025",
+  "assignmentName": "HW1 - Linked Lists",
+  "generatedAt": 1788476109536,
+  "metrics": {
+    "assignmentId": "asgn-hw1-2025",
+    "authorship": {
+      "totalLines": 200,
+      "manualLines": 100,
+      "permittedAILines": 50,
+      "prohibitedAILines": 30,
+      "flaggedAILines": 20,
+      "authorshipPercentage": 50,
+      "prohibitedPercentage": 15
+    },
+    "ownership": {
+      "score": 80,
+      "filesReviewed": 1,
+      "filesUnreviewed": 1,
+      "unreviewedLines": 20,
+      "averageReviewTimeMs": 4000
+    },
+    "violations": [
+      {
+        "type": "agentic-use",
+        "severity": "high",
+        "message": "Agentic AI use detected (files modified by an external agent or AI commit markers)",
+        "details": {
+          "filePath": "/repo/src/main.ts",
+          "detectionMethod": "external-file-change",
+          "lines": 30,
+          "tool": "claude-code"
+        },
+        "firstDetectedAt": 1735815600000,
+        "lastDetectedAt": 1735815600000,
+        "count": 1
+      },
+      {
+        "type": "authorship-exceeded",
+        "severity": "medium",
+        "message": "AI authorship 50.0% exceeds limit of 30%",
+        "details": {
+          "actualPercentage": 50,
+          "maxAllowedPercentage": 30,
+          "aiLines": 100
+        },
+        "firstDetectedAt": 1735819200000,
+        "lastDetectedAt": 1735819200000,
+        "count": 1
+      },
+      {
+        "type": "tracking-gap",
+        "severity": "low",
+        "message": "No tracking activity for 32400 seconds during assignment window",
+        "details": {
+          "startTime": 1735776000000,
+          "endTime": 1735808400000,
+          "durationSeconds": 32400
+        },
+        "firstDetectedAt": 1735808400000,
+        "lastDetectedAt": 1735819200000,
+        "count": 4
+      }
+    ],
+    "rawEvents": [
+      {
+        "timestamp": 1735808400000,
+        "tool": "copilot",
+        "eventType": "suggestion-accepted",
+        "source": "manual",
+        "filePath": "/repo/src/list.ts",
+        "linesChanged": 100
+      },
+      {
+        "timestamp": 1735812000000,
+        "tool": "copilot",
+        "eventType": "suggestion-accepted",
+        "source": "ai",
+        "detectionMethod": "inline-completion-api",
+        "filePath": "/repo/src/node.ts",
+        "linesOfCode": 50
+      },
+      {
+        "timestamp": 1735815600000,
+        "tool": "claude-code",
+        "eventType": "code-generated",
+        "source": "ai",
+        "detectionMethod": "external-file-change",
+        "filePath": "/repo/src/main.ts",
+        "linesOfCode": 30
+      },
+      {
+        "timestamp": 1735819200000,
+        "tool": "cursor",
+        "eventType": "suggestion-accepted",
+        "source": "ai",
+        "detectionMethod": "large-paste",
+        "filePath": "/repo/src/utils.ts",
+        "linesOfCode": 20,
+        "acceptanceTimeDelta": 10000
+      }
+    ],
+    "fileReviews": [
+      {
+        "filePath": "/repo/src/main.ts",
+        "tool": "claude-code",
+        "reviewScore": 80,
+        "totalReviewTime": 4000
+      }
+    ],
+    "trackingGaps": [
+      {
+        "startTime": 1735776000000,
+        "endTime": 1735808400000,
+        "durationSeconds": 32400
+      },
+      {
+        "startTime": 1735808400000,
+        "endTime": 1735812000000,
+        "durationSeconds": 3600
+      },
+      {
+        "startTime": 1735812000000,
+        "endTime": 1735815600000,
+        "durationSeconds": 3600
+      },
+      {
+        "startTime": 1735815600000,
+        "endTime": 1735819200000,
+        "durationSeconds": 3600
+      }
+    ]
+  },
+  "policy": {
+    "maxAuthorshipPercentage": 30,
+    "minOwnershipScore": 40,
+    "exemptFileGlobs": [
+      "**/*.md"
+    ],
+    "prohibitedMethods": [
+      "external-file-change",
+      "git-commit-marker"
+    ],
+    "permittedMethods": [
+      "inline-completion-api"
+    ],
+    "flaggedMethods": [
+      "large-paste",
+      "change-velocity"
+    ],
+    "minLargePasteReviewTimeMs": 5000,
+    "maxTrackingGapSeconds": 1800
+  },
+  "studentIdentifier": "student-042",
+  "repoUrl": "https://github.com/student/hw1",
+  "repoHeadCommit": "abc123def456",
+  "integrity": {
+    "algorithm": "sha256",
+    "hash": "061df5d06736ce52b5906ff949231e51eecae8555bd8162f57161afbafe8617b"
+  }
+}

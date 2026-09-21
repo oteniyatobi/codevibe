@@ -260,12 +260,12 @@ describe('NotificationService', () => {
   describe('Error Notifications', () => {
     it('should show error message', () => {
       notificationService.showError('Test error');
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('CodePause: Test error');
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('CodeVibe: Test error');
     });
 
     it('should show error with action', () => {
       notificationService.showError('Test error', 'Retry');
-      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('CodePause: Test error', 'Retry');
+      expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('CodeVibe: Test error', 'Retry');
     });
 
     it('should show error with guidance', () => {

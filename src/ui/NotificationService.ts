@@ -3,9 +3,9 @@
  * Handles displaying coaching alerts and notifications to users
  */
 
-import * as vscode from 'vscode';
-import { Alert, AlertType, AlertAction } from '../types';
-import { ConfigRepository } from '../storage/ConfigRepository';
+import * as vscode from "vscode";
+import { Alert, AlertType, AlertAction } from "../types";
+import { ConfigRepository } from "../storage/ConfigRepository";
 
 export class NotificationService {
   private configRepository: ConfigRepository;
@@ -20,7 +20,7 @@ export class NotificationService {
 
   async showAlert(alert: Alert): Promise<void> {
     const now = Date.now();
-    
+
     // Check if already showing this alert (by ID)
     if (this.activeNotifications.has(alert.id)) {
       return;
@@ -28,20 +28,26 @@ export class NotificationService {
 
     // Check for duplicate messages within last 5 seconds
     // Use a more flexible key that ignores timeDelta variations
-    const messageBase = alert.message.replace(/\d+ms review time/g, 'Xms review time');
+    const messageBase = alert.message.replace(
+      /\d+ms review time/g,
+      "Xms review time",
+    );
     const messageKey = `${alert.type}-${messageBase}`;
     const lastShown = this.recentAlertMessages.get(messageKey);
-    if (lastShown && (now - lastShown) < 5000) {
+    if (lastShown && now - lastShown < 5000) {
       return;
     }
 
     // Also check by alert type + timeDelta range (within 100ms) to catch same event processed multiple times
-    if (alert.metadata?.detection?.timeDelta) {
-      const timeDelta = alert.metadata.detection.timeDelta;
+    const alertMetadata = alert.metadata as
+      | { detection?: { timeDelta?: unknown } }
+      | undefined;
+    const timeDelta = alertMetadata?.detection?.timeDelta;
+    if (typeof timeDelta === "number") {
       const timeDeltaRange = Math.floor(timeDelta / 100) * 100; // Round to nearest 100ms
       const timeDeltaKey = `${alert.type}-timeDelta-${timeDeltaRange}`;
       const lastTimeDeltaShown = this.recentAlertMessages.get(timeDeltaKey);
-      if (lastTimeDeltaShown && (now - lastTimeDeltaShown) < 5000) {
+      if (lastTimeDeltaShown && now - lastTimeDeltaShown < 5000) {
         return;
       }
       this.recentAlertMessages.set(timeDeltaKey, now);
@@ -49,7 +55,7 @@ export class NotificationService {
 
     // Record this message
     this.recentAlertMessages.set(messageKey, now);
-    
+
     // Clean up old entries (older than 10 seconds)
     for (const [key, timestamp] of this.recentAlertMessages.entries()) {
       if (now - timestamp > 10000) {
@@ -79,9 +85,9 @@ export class NotificationService {
     } else {
       // Default actions based on alert type
       if (alert.type === AlertType.Achievement) {
-        actions.push('Awesome!');
+        actions.push("Awesome!");
       } else {
-        actions.push('Got It', 'Snooze');
+        actions.push("Got It", "Snooze");
       }
     }
 
@@ -94,7 +100,7 @@ export class NotificationService {
         notification = vscode.window.showInformationMessage(
           `⚡ ${alert.title}: ${alert.message}`,
           { modal: false },
-          ...actions
+          ...actions,
         );
         break;
 
@@ -103,7 +109,7 @@ export class NotificationService {
         notification = vscode.window.showWarningMessage(
           `🎯 ${alert.title}: ${alert.message}`,
           { modal: false },
-          ...actions
+          ...actions,
         );
         break;
 
@@ -111,7 +117,7 @@ export class NotificationService {
         notification = vscode.window.showInformationMessage(
           `${alert.title}: ${alert.message}`,
           { modal: false },
-          ...actions
+          ...actions,
         );
         break;
 
@@ -120,7 +126,7 @@ export class NotificationService {
         notification = vscode.window.showInformationMessage(
           `💡 ${alert.title}: ${alert.message}`,
           { modal: false },
-          ...actions
+          ...actions,
         );
         break;
     }
@@ -149,7 +155,7 @@ export class NotificationService {
     let action: AlertAction | undefined;
 
     if (alert.actions) {
-      action = alert.actions.find(a => a.label === response);
+      action = alert.actions.find((a) => a.label === response);
     } else {
       // Map default responses to actions
       action = this.getDefaultAction(response);
@@ -165,23 +171,23 @@ export class NotificationService {
 
   private getDefaultAction(response: string): AlertAction | undefined {
     switch (response) {
-      case 'Got It':
-      case 'Awesome!':
-      case 'OK':
-        return { label: response, action: 'dismiss' };
+      case "Got It":
+      case "Awesome!":
+      case "OK":
+        return { label: response, action: "dismiss" };
 
-      case 'Snooze':
-        return { label: response, action: 'snooze' };
+      case "Snooze":
+        return { label: response, action: "snooze" };
 
-      case 'Learn More':
-        return { label: response, action: 'learn-more' };
+      case "Learn More":
+        return { label: response, action: "learn-more" };
 
-      case 'Dashboard':
-      case 'View All':
-        return { label: response, action: 'open-dashboard' };
+      case "Dashboard":
+      case "View All":
+        return { label: response, action: "open-dashboard" };
 
-      case 'Settings':
-        return { label: response, action: 'open-settings' };
+      case "Settings":
+        return { label: response, action: "open-settings" };
 
       default:
         return undefined;
@@ -190,28 +196,34 @@ export class NotificationService {
 
   private async executeAction(action: AlertAction): Promise<void> {
     switch (action.action) {
-      case 'dismiss':
+      case "dismiss":
         // Nothing to do
         break;
 
-      case 'snooze':
-        await this.configRepository.snoozeUntilEndOfDay('User requested from alert');
-        vscode.window.showInformationMessage('✓ Alerts snoozed until end of day');
-        break;
-
-      case 'learn-more':
-        // Open documentation or help page
-        await vscode.env.openExternal(
-          vscode.Uri.parse('https://github.com/codepause-dev/codepause-extension#readme')
+      case "snooze":
+        await this.configRepository.snoozeUntilEndOfDay(
+          "User requested from alert",
+        );
+        vscode.window.showInformationMessage(
+          "✓ Alerts snoozed until end of day",
         );
         break;
 
-      case 'open-dashboard':
-        await vscode.commands.executeCommand('codePause.openDashboard');
+      case "learn-more":
+        // Open documentation or help page
+        await vscode.env.openExternal(
+          vscode.Uri.parse(
+            "https://github.com/codepause-dev/codepause-extension#readme",
+          ),
+        );
         break;
 
-      case 'open-settings':
-        await vscode.commands.executeCommand('codePause.openSettings');
+      case "open-dashboard":
+        await vscode.commands.executeCommand("codePause.openDashboard");
+        break;
+
+      case "open-settings":
+        await vscode.commands.executeCommand("codePause.openSettings");
         break;
     }
   }
@@ -221,9 +233,9 @@ export class NotificationService {
    */
   private formatTime(ms: number): string {
     if (ms < 1000) {
-      return 'under 1 second';
+      return "under 1 second";
     } else if (ms < 2000) {
-      return '1 second';
+      return "1 second";
     } else if (ms < 60000) {
       return `${Math.round(ms / 1000)} seconds`;
     } else {
@@ -241,14 +253,14 @@ export class NotificationService {
     const alert: Alert = {
       id: `nudge-${Date.now()}`,
       type: AlertType.GentleNudge,
-      title: 'Quick Review Detected',
+      title: "Quick Review Detected",
       message: `You reviewed that in ${timeStr}. Try taking at least ${thresholdStr} to spot potential bugs and understand the code better.`,
       timestamp: Date.now(),
       actions: [
-        { label: 'Got It', action: 'dismiss' },
-        { label: 'Snooze', action: 'snooze' },
-        { label: 'Dashboard', action: 'open-dashboard' }
-      ]
+        { label: "Got It", action: "dismiss" },
+        { label: "Snooze", action: "snooze" },
+        { label: "Dashboard", action: "open-dashboard" },
+      ],
     };
 
     await this.showAlert(alert);
@@ -258,14 +270,14 @@ export class NotificationService {
     const alert: Alert = {
       id: `edu-${Date.now()}`,
       type: AlertType.EducationalMoment,
-      title: 'Coding Tip',
+      title: "Coding Tip",
       message: tip,
       timestamp: Date.now(),
       autoClose: 8, // Auto-close after 8 seconds (more time to read)
       actions: [
-        { label: 'Got It', action: 'dismiss' },
-        { label: 'Learn More', action: 'learn-more' }
-      ]
+        { label: "Got It", action: "dismiss" },
+        { label: "Learn More", action: "learn-more" },
+      ],
     };
 
     await this.showAlert(alert);
@@ -275,20 +287,23 @@ export class NotificationService {
     const alert: Alert = {
       id: `streak-${Date.now()}`,
       type: AlertType.StreakWarning,
-      title: 'Review Pattern Notice',
+      title: "Review Pattern Notice",
       message: `You've quickly accepted ${streakCount} suggestions in a row. Slow down and review each suggestion for at least 3-5 seconds to catch bugs and learn.`,
       timestamp: Date.now(),
       actions: [
-        { label: 'Got It', action: 'dismiss' },
-        { label: 'Snooze', action: 'snooze' },
-        { label: 'Dashboard', action: 'open-dashboard' }
-      ]
+        { label: "Got It", action: "dismiss" },
+        { label: "Snooze", action: "snooze" },
+        { label: "Dashboard", action: "open-dashboard" },
+      ],
     };
 
     await this.showAlert(alert);
   }
 
-  async showAchievementUnlocked(title: string, description: string): Promise<void> {
+  async showAchievementUnlocked(
+    title: string,
+    description: string,
+  ): Promise<void> {
     const alert: Alert = {
       id: `achievement-${Date.now()}`,
       type: AlertType.Achievement,
@@ -296,9 +311,9 @@ export class NotificationService {
       message: description,
       timestamp: Date.now(),
       actions: [
-        { label: 'Awesome!', action: 'dismiss' },
-        { label: 'View All', action: 'open-dashboard' }
-      ]
+        { label: "Awesome!", action: "dismiss" },
+        { label: "View All", action: "open-dashboard" },
+      ],
     };
 
     await this.showAlert(alert);
@@ -312,15 +327,19 @@ export class NotificationService {
       message: `Congratulations! You're now a ${title}. Keep up the mindful coding!`,
       timestamp: Date.now(),
       actions: [
-        { label: 'Awesome!', action: 'dismiss' },
-        { label: 'Dashboard', action: 'open-dashboard' }
-      ]
+        { label: "Awesome!", action: "dismiss" },
+        { label: "Dashboard", action: "open-dashboard" },
+      ],
     };
 
     await this.showAlert(alert);
   }
 
-  async showAchievementProgress(achievementTitle: string, progress: number, icon: string): Promise<void> {
+  async showAchievementProgress(
+    achievementTitle: string,
+    progress: number,
+    icon: string,
+  ): Promise<void> {
     const alert: Alert = {
       id: `progress-${Date.now()}`,
       type: AlertType.EducationalMoment,
@@ -329,15 +348,19 @@ export class NotificationService {
       timestamp: Date.now(),
       autoClose: 6,
       actions: [
-        { label: 'Got It', action: 'dismiss' },
-        { label: 'Dashboard', action: 'open-dashboard' }
-      ]
+        { label: "Got It", action: "dismiss" },
+        { label: "Dashboard", action: "open-dashboard" },
+      ],
     };
 
     await this.showAlert(alert);
   }
 
-  async showXPGain(xpAmount: number, action: string, showNotification: boolean = false): Promise<void> {
+  async showXPGain(
+    xpAmount: number,
+    action: string,
+    showNotification: boolean = false,
+  ): Promise<void> {
     // Only show full notifications for significant XP gains or when explicitly requested
     if (showNotification || xpAmount >= 10) {
       vscode.window.showInformationMessage(`✨ +${xpAmount} XP: ${action}`);
@@ -350,44 +373,52 @@ export class NotificationService {
 
   showError(message: string, actionText?: string): void {
     const actions = actionText ? [actionText] : [];
-    vscode.window.showErrorMessage(`CodePause: ${message}`, ...actions);
+    vscode.window.showErrorMessage(`CodeVibe: ${message}`, ...actions);
   }
 
   showErrorWithGuidance(error: Error, context: string): void {
     const guidance = this.getErrorGuidance(error, context);
-    vscode.window.showErrorMessage(`CodePause - ${context}: ${guidance}`, 'Retry', 'Report Issue');
+    vscode.window.showErrorMessage(
+      `CodeVibe - ${context}: ${guidance}`,
+      "Retry",
+      "Report Issue",
+    );
   }
 
   private getErrorGuidance(error: Error, context: string): string {
     const errorMsg = error.message.toLowerCase();
 
     // Database errors
-    if (errorMsg.includes('database') || errorMsg.includes('sqlite')) {
-      return 'Database error. Try reloading VS Code. If the issue persists, your database file may be corrupted.';
+    if (errorMsg.includes("database") || errorMsg.includes("sqlite")) {
+      return "Database error. Try reloading VS Code. If the issue persists, your database file may be corrupted.";
     }
 
     // File system errors
-    if (errorMsg.includes('enoent') || errorMsg.includes('file not found')) {
-      return 'File not found. The extension may need to reinitialize. Try reloading VS Code.';
+    if (errorMsg.includes("enoent") || errorMsg.includes("file not found")) {
+      return "File not found. The extension may need to reinitialize. Try reloading VS Code.";
     }
 
-    if (errorMsg.includes('eacces') || errorMsg.includes('permission')) {
-      return 'Permission denied. Check that VS Code has write access to the extension storage directory.';
+    if (errorMsg.includes("eacces") || errorMsg.includes("permission")) {
+      return "Permission denied. Check that VS Code has write access to the extension storage directory.";
     }
 
     // Network errors
-    if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('timeout')) {
-      return 'Network error. Check your internet connection and try again.';
+    if (
+      errorMsg.includes("network") ||
+      errorMsg.includes("fetch") ||
+      errorMsg.includes("timeout")
+    ) {
+      return "Network error. Check your internet connection and try again.";
     }
 
     // Configuration errors
-    if (context.includes('config') || context.includes('setting')) {
-      return 'Configuration error. Try resetting your CodePause settings to defaults.';
+    if (context.includes("config") || context.includes("setting")) {
+      return "Configuration error. Try resetting your CodeVibe settings to defaults.";
     }
 
     // Tracker errors
-    if (context.includes('tracker') || context.includes('tracking')) {
-      return 'Tracking error. The AI tool integration may have failed. Try reloading VS Code.';
+    if (context.includes("tracker") || context.includes("tracking")) {
+      return "Tracking error. The AI tool integration may have failed. Try reloading VS Code.";
     }
 
     // Generic fallback with context
@@ -399,33 +430,36 @@ export class NotificationService {
    * Adapts message based on developer experience level
    */
   async showOverRelianceNotification(
-    experienceLevel: 'junior' | 'mid' | 'senior',
+    experienceLevel: "junior" | "mid" | "senior",
     aiPercentage: number,
-    targetPercentage: number
+    targetPercentage: number,
   ): Promise<void> {
     let title: string;
     let message: string;
     let tone: string;
 
-    if (experienceLevel === 'junior') {
-      title = 'Skill Development Check';
-      tone = '💡';
-      message = `Today you're at ${Math.round(aiPercentage)}% AI-generated code.\n\n` +
+    if (experienceLevel === "junior") {
+      title = "Skill Development Check";
+      tone = "💡";
+      message =
+        `Today you're at ${Math.round(aiPercentage)}% AI-generated code.\n\n` +
         `Building strong fundamentals requires hands-on practice. Research shows junior developers learn 3x faster when writing 40%+ of code manually.\n\n` +
         `Try: Solve the next small function yourself before asking AI. You'll retain more and understand patterns better.\n\n` +
         `Target: <${targetPercentage}% AI for optimal skill growth`;
-    } else if (experienceLevel === 'mid') {
-      title = 'Balance Check';
-      tone = '⚖️';
+    } else if (experienceLevel === "mid") {
+      title = "Balance Check";
+      tone = "⚖️";
       const excess = Math.round(aiPercentage - targetPercentage);
-      message = `This week: ${Math.round(aiPercentage)}% AI / ${Math.round(100 - aiPercentage)}% manual\n\n` +
+      message =
+        `This week: ${Math.round(aiPercentage)}% AI / ${Math.round(100 - aiPercentage)}% manual\n\n` +
         `You're ${excess}% over your target. Maintaining coding skills requires regular practice.\n\n` +
         `Recommendation: Reserve time for manual problem-solving. Your architectural thinking stays sharper with balanced practice.\n\n` +
         `Target: ~${targetPercentage}% AI for balanced productivity`;
     } else {
-      title = 'Usage Pattern Alert';
-      tone = '📊';
-      message = `Monthly average: ${Math.round(aiPercentage)}% AI\n\n` +
+      title = "Usage Pattern Alert";
+      tone = "📊";
+      message =
+        `Monthly average: ${Math.round(aiPercentage)}% AI\n\n` +
         `High AI usage correlates with 19% slower task completion (METR 2025 study). Your critical thinking and architecture skills need regular exercise.\n\n` +
         `Impact: Over-reliance can lead to shallow understanding and degraded debugging skills.\n\n` +
         `Target: <${targetPercentage}% AI to maintain expertise`;
@@ -434,9 +468,9 @@ export class NotificationService {
     await vscode.window.showInformationMessage(
       `${tone} ${title}\n\n${message}`,
       { modal: false },
-      'View Stats',
-      'Remind Tomorrow',
-      'Dismiss'
+      "View Stats",
+      "Remind Tomorrow",
+      "Dismiss",
     );
   }
 
@@ -445,18 +479,19 @@ export class NotificationService {
    * Different approaches for junior/mid/senior
    */
   async showInsufficientReviewNotification(
-    experienceLevel: 'junior' | 'mid' | 'senior',
+    experienceLevel: "junior" | "mid" | "senior",
     reviewTime: number,
-    linesOfCode: number
+    linesOfCode: number,
   ): Promise<void> {
     let title: string;
     let message: string;
     let tone: string;
 
-    if (experienceLevel === 'junior') {
-      title = 'Review Reminder';
-      tone = '🔍';
-      message = `That ${linesOfCode}-line function was reviewed for ${this.formatTime(reviewTime)}.\n\n` +
+    if (experienceLevel === "junior") {
+      title = "Review Reminder";
+      tone = "🔍";
+      message =
+        `That ${linesOfCode}-line function was reviewed for ${this.formatTime(reviewTime)}.\n\n` +
         `AI code has 1.7x more bugs (CodeRabbit 2025). Taking time to review helps you:\n` +
         `• Catch logic errors and edge cases\n` +
         `• Learn how the code works\n` +
@@ -465,16 +500,18 @@ export class NotificationService {
         `- Variable names make sense?\n` +
         `- Error handling included?\n` +
         `- Edge cases covered?`;
-    } else if (experienceLevel === 'mid') {
-      title = 'Review Quality Notice';
-      tone = '⚠️';
-      message = `Quick acceptance pattern detected (${this.formatTime(reviewTime)} review for ${linesOfCode} lines).\n\n` +
+    } else if (experienceLevel === "mid") {
+      title = "Review Quality Notice";
+      tone = "⚠️";
+      message =
+        `Quick acceptance pattern detected (${this.formatTime(reviewTime)} review for ${linesOfCode} lines).\n\n` +
         `Taking a moment to review maintains code quality and catches issues early. Your usual review time is typically longer.\n\n` +
         `Quick acceptances can lead to technical debt and harder debugging sessions later.`;
     } else {
-      title = 'Code Ownership Alert';
-      tone = '👨‍💻';
-      message = `${linesOfCode} lines accepted in ${this.formatTime(reviewTime)}.\n\n` +
+      title = "Code Ownership Alert";
+      tone = "👨‍💻";
+      message =
+        `${linesOfCode} lines accepted in ${this.formatTime(reviewTime)}.\n\n` +
         `Pattern suggests reduced code ownership. Healthy AI usage includes reviewing and adapting suggestions.\n\n` +
         `Data point: Seniors who edit 30-40% of AI suggestions report better code quality and fewer production issues.`;
     }
@@ -482,17 +519,23 @@ export class NotificationService {
     const response = await vscode.window.showWarningMessage(
       `${tone} ${title}\n\n${message}`,
       { modal: false },
-      'Review Now',
-      'Got It',
-      'Snooze'
+      "Review Now",
+      "Got It",
+      "Snooze",
     );
 
-    if (response === 'Review Now') {
+    if (response === "Review Now") {
       // Focus back on editor
-      await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-    } else if (response === 'Snooze') {
-      await this.configRepository.snoozeUntilEndOfDay('User requested from review reminder');
-      vscode.window.showInformationMessage('✓ Review reminders snoozed until end of day');
+      await vscode.commands.executeCommand(
+        "workbench.action.focusActiveEditorGroup",
+      );
+    } else if (response === "Snooze") {
+      await this.configRepository.snoozeUntilEndOfDay(
+        "User requested from review reminder",
+      );
+      vscode.window.showInformationMessage(
+        "✓ Review reminders snoozed until end of day",
+      );
     }
   }
 
@@ -502,18 +545,18 @@ export class NotificationService {
    */
   async showPositiveReinforcementNotification(
     aiPercentage: number,
-    reviewQuality: number
+    reviewQuality: number,
   ): Promise<void> {
     const manualPercentage = Math.round(100 - aiPercentage);
 
     await vscode.window.showInformationMessage(
       `🌟 Great Work!\n\n` +
-      `Today: ${Math.round(aiPercentage)}% AI, ${manualPercentage}% manual + ${reviewQuality}% review quality score\n\n` +
-      `You're maintaining excellent balance and code quality. This is the sweet spot for productivity + skill maintenance.\n\n` +
-      `Keep it up!`,
+        `Today: ${Math.round(aiPercentage)}% AI, ${manualPercentage}% manual + ${reviewQuality}% review quality score\n\n` +
+        `You're maintaining excellent balance and code quality. This is the sweet spot for productivity + skill maintenance.\n\n` +
+        `Keep it up!`,
       { modal: false },
-      'See My Stats',
-      'Thanks!'
+      "See My Stats",
+      "Thanks!",
     );
   }
 
@@ -522,14 +565,16 @@ export class NotificationService {
    * Data-driven, not judgmental
    */
   async showWeeklySummaryNotification(
-    experienceLevel: 'junior' | 'mid' | 'senior',
+    experienceLevel: "junior" | "mid" | "senior",
     weeklyAIPercentage: number,
     editRate: number,
-    rejectionRate: number
+    rejectionRate: number,
   ): Promise<void> {
     const isHealthy = editRate >= 0.3 || rejectionRate >= 0.1;
-    const tone = isHealthy ? '✅' : '📊';
-    const title = isHealthy ? 'Healthy AI Usage Pattern' : 'Weekly Pattern Summary';
+    const tone = isHealthy ? "✅" : "📊";
+    const title = isHealthy
+      ? "Healthy AI Usage Pattern"
+      : "Weekly Pattern Summary";
 
     let message = `This week's AI usage: ${Math.round(weeklyAIPercentage)}%\n\n`;
     message += `Engagement metrics:\n`;
@@ -539,7 +584,7 @@ export class NotificationService {
     if (isHealthy) {
       message += `You're actively engaging with AI suggestions rather than blindly accepting. This indicates strong code ownership.`;
     } else {
-      const benchmark = experienceLevel === 'senior' ? '30-40%' : '20-30%';
+      const benchmark = experienceLevel === "senior" ? "30-40%" : "20-30%";
       message += `Industry benchmark: ${benchmark} of AI suggestions should be edited or rejected.\n\n`;
       message += `Low engagement may indicate reduced critical thinking. Try challenging AI suggestions more often.`;
     }
@@ -547,8 +592,8 @@ export class NotificationService {
     await vscode.window.showInformationMessage(
       `${tone} ${title}\n\n${message}`,
       { modal: false },
-      'View Details',
-      'OK'
+      "View Details",
+      "OK",
     );
   }
 
@@ -558,16 +603,16 @@ export class NotificationService {
 
   static getEducationalTips(): string[] {
     return [
-      'Taking time to review AI suggestions helps you learn and spot potential issues.',
-      'Balanced AI usage (40-60%) promotes both productivity and skill development.',
-      'Understanding why AI suggests code is as important as using the suggestion.',
-      'Quick acceptance might save time now, but thorough review saves debugging time later.',
-      'AI tools are assistants, not replacements. Your judgment and expertise matter most.',
-      'Reviewing AI code carefully helps maintain your critical thinking skills.',
-      'Consider edge cases that AI might miss when accepting suggestions.',
-      'The best developers use AI thoughtfully, not blindly.',
-      'Your experience improves when you actively engage with AI suggestions.',
-      'Taking breaks from AI suggestions helps maintain your problem-solving abilities.'
+      "Taking time to review AI suggestions helps you learn and spot potential issues.",
+      "Balanced AI usage (40-60%) promotes both productivity and skill development.",
+      "Understanding why AI suggests code is as important as using the suggestion.",
+      "Quick acceptance might save time now, but thorough review saves debugging time later.",
+      "AI tools are assistants, not replacements. Your judgment and expertise matter most.",
+      "Reviewing AI code carefully helps maintain your critical thinking skills.",
+      "Consider edge cases that AI might miss when accepting suggestions.",
+      "The best developers use AI thoughtfully, not blindly.",
+      "Your experience improves when you actively engage with AI suggestions.",
+      "Taking breaks from AI suggestions helps maintain your problem-solving abilities.",
     ];
   }
 

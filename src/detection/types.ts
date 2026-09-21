@@ -3,13 +3,9 @@
  * Core types for AI vs Manual code detection
  */
 
-export enum AIDetectionMethod {
-  InlineCompletionAPI = 'inline-completion-api',      // Method 1: VS Code API
-  LargePaste = 'large-paste',                        // Method 2: >100 char paste
-  ExternalFileChange = 'external-file-change',       // Method 3: Closed file modified
-  GitCommitMarker = 'git-commit-marker',             // Method 4: Explicit AI markers
-  ChangeVelocity = 'change-velocity'                 // Method 5: Too fast = AI
-}
+import { AIDetectionMethod, AIClassification } from '../types';
+
+export { AIDetectionMethod, AIClassification };
 
 export type DetectionConfidence = 'high' | 'medium' | 'low';
 
@@ -17,6 +13,7 @@ export interface AIDetectionResult {
   isAI: boolean;
   confidence: DetectionConfidence;
   method: AIDetectionMethod;
+  classification?: AIClassification;
   metadata: {
     source?: string;
     charactersCount: number;

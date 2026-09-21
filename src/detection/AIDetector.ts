@@ -15,7 +15,8 @@
 import {
   AIDetectionResult,
   AIDetectionMethod,
-  CodeChangeEvent
+  CodeChangeEvent,
+  AIClassification
 } from './types';
 
 export class AIDetector {
@@ -71,6 +72,7 @@ export class AIDetector {
       isAI: true,
       confidence: 'high',
       method: AIDetectionMethod.InlineCompletionAPI,
+      classification: AIClassification.Permitted,
       metadata: {
         source: 'inline-completion-api',
         charactersCount: text.length,
@@ -109,6 +111,7 @@ export class AIDetector {
           isAI: true,
           confidence: 'high',
           method: AIDetectionMethod.LargePaste,
+          classification: AIClassification.Flag,
           metadata: {
             source: 'large-paste',
             charactersCount: chars,
@@ -124,6 +127,7 @@ export class AIDetector {
       isAI: false,
       confidence: 'low',
       method: AIDetectionMethod.LargePaste,
+      classification: AIClassification.Permitted,
       metadata: {
         charactersCount: chars,
         linesOfCode: this.countLines(text),
@@ -160,6 +164,7 @@ export class AIDetector {
       isAI: true,
       confidence: 'high',
       method: AIDetectionMethod.ExternalFileChange,
+      classification: AIClassification.Prohibited,
       metadata: {
         source: 'external-file-change',
         charactersCount: text.length,
@@ -193,6 +198,7 @@ export class AIDetector {
         isAI: true,
         confidence: 'high',
         method: AIDetectionMethod.GitCommitMarker,
+        classification: AIClassification.Prohibited,
         metadata: {
           source: 'git-commit',
           charactersCount: stats.chars,
@@ -206,6 +212,7 @@ export class AIDetector {
       isAI: false,
       confidence: 'low',
       method: AIDetectionMethod.GitCommitMarker,
+      classification: AIClassification.Permitted,
       metadata: {
         charactersCount: 0,
         linesOfCode: 0,
@@ -253,6 +260,7 @@ export class AIDetector {
         isAI: true,
         confidence: 'medium', // Heuristic-based, not definitive
         method: AIDetectionMethod.ChangeVelocity,
+        classification: AIClassification.Flag,
         metadata: {
           source: 'high-velocity',
           charactersCount: totalChars,
@@ -268,6 +276,7 @@ export class AIDetector {
       isAI: false,
       confidence: 'low',
       method: AIDetectionMethod.ChangeVelocity,
+      classification: AIClassification.Permitted,
       metadata: {
         charactersCount: chars,
         linesOfCode: this.countLines(event.text),
@@ -352,17 +361,18 @@ export class AIDetector {
     const aiResults = results.filter(r => r.isAI);
 
     if (aiResults.length === 0) {
-      // No AI detected by any method
-      return results[0] || {
-        isAI: false,
-        confidence: 'low',
-        method: AIDetectionMethod.LargePaste,
-        metadata: {
-          charactersCount: 0,
-          linesOfCode: 0,
-          timestamp: Date.now()
-        }
-      };
+    // No AI detected by any method
+    return results[0] || {
+      isAI: false,
+      confidence: 'low',
+      method: AIDetectionMethod.LargePaste,
+      classification: AIClassification.Permitted,
+      metadata: {
+        charactersCount: 0,
+        linesOfCode: 0,
+        timestamp: Date.now()
+      }
+    };
     }
 
     // Find highest confidence

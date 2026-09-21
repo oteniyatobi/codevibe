@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseTracker } from './BaseTracker';
 import { AIDetector } from '../detection/AIDetector';
-import { EventType, CodeSource } from '../types';
+import { EventType, CodeSource, AIClassification } from '../types';
 
 export class UnifiedAITracker extends BaseTracker {
   private aiDetector: AIDetector;
@@ -387,7 +387,12 @@ export class UnifiedAITracker extends BaseTracker {
         detectionMethod: 'text-change-large-deletion',
         confidence: 'medium',
         isAgentMode: true,
-        fileWasOpen: true
+        aiClassification: AIClassification.Prohibited,
+        metadata: {
+          detectionMethod: 'text-change-large-deletion',
+          confidence: 'medium',
+          isAgentGenerated: true
+        }
       });
       return;
     }
@@ -819,6 +824,7 @@ export class UnifiedAITracker extends BaseTracker {
       detectionMethod: result.method,
       confidence: result.confidence,
       isAgentMode: isAgentMode,  // FIX: Set agent mode flag
+      aiClassification: result.classification ?? AIClassification.Flag,
       metadata: {
         detectionMethod: result.method,
         confidence: result.confidence,
@@ -870,8 +876,9 @@ export class UnifiedAITracker extends BaseTracker {
       language: document.languageId,
       detectionMethod: result.method,
       confidence: result.confidence,
-      isAgentMode: isAgentMode || result.method === 'large-paste', // Also count large-paste as Agent Mode
+      isAgentMode: isAgentMode || result.method === 'large-paste',
       fileWasOpen: fileWasOpen,
+      aiClassification: result.classification ?? AIClassification.Flag,
       metadata: {
         source: result.metadata.source,
         detectionMethod: result.method,

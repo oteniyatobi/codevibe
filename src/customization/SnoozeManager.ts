@@ -46,7 +46,7 @@ export class SnoozeManager {
     // Show confirmation
     const durationStr = this.formatDuration(durationMs);
     vscode.window.showInformationMessage(
-      `CodePause alerts snoozed for ${durationStr}`
+      `CodeVibe alerts snoozed for ${durationStr}`
     );
   }
 
@@ -57,7 +57,7 @@ export class SnoozeManager {
     this.onSnoozeChangedEmitter.fire(state);
 
     vscode.window.showInformationMessage(
-      'CodePause alerts snoozed until end of day'
+      'CodeVibe alerts snoozed until end of day'
     );
   }
 
@@ -90,7 +90,7 @@ export class SnoozeManager {
     const state = await this.configRepository.getSnoozeState();
     this.onSnoozeChangedEmitter.fire(state);
 
-    vscode.window.showInformationMessage('CodePause alerts resumed');
+    vscode.window.showInformationMessage('CodeVibe alerts resumed');
   }
 
   async isSnoozed(): Promise<boolean> {
@@ -175,7 +175,7 @@ export class SnoozeManager {
     if (Date.now() > state.snoozeUntil) {
       await this.clearSnooze();
       vscode.window.showInformationMessage(
-        'CodePause snooze period ended. Alerts resumed.'
+        'CodeVibe snooze period ended. Alerts resumed.'
       );
     }
   }

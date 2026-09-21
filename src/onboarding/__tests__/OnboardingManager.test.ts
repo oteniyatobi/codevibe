@@ -181,7 +181,7 @@ describe('OnboardingManager', () => {
       // Verify webview panel was created
       expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
         'codePauseOnboarding',
-        'CodePause Setup',
+        'CodeVibe Setup',
         vscode.ViewColumn.One,
         expect.objectContaining({
           enableScripts: true,

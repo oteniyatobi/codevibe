@@ -4,10 +4,10 @@
  * Now supports workspace-specific databases for project isolation
  */
 
-import * as path from 'path';
-import * as fs from 'fs';
-import * as crypto from 'crypto';
-import initSqlJs from 'sql.js';
+import * as path from "path";
+import * as fs from "fs";
+import * as crypto from "crypto";
+import initSqlJs from "sql.js";
 
 type SqlJsDatabase = any;
 
@@ -29,6 +29,7 @@ import {
   ConfigRecord,
   SnoozeStateRecord,
   AlertHistoryRecord,
+  AssignmentRecord,
   AITool,
   EventType,
   ReviewQuality,
@@ -36,9 +37,14 @@ import {
   AgentSessionRecord,
   FileReviewStatus,
   FileReviewStatusRecord,
-  CodeSource
-} from '../types';
-import { safeJsonParse } from '../utils/SecurityUtils';
+  CodeSource,
+  AIClassification,
+  PolicyViolationType,
+  Assignment,
+  AssignmentPolicy,
+  AIDetectionMethod,
+} from "../types";
+import { safeJsonParse } from "../utils/SecurityUtils";
 
 export class DatabaseManager implements IDatabaseManager {
   private db: SqlJsDatabase | null = null;
@@ -62,13 +68,13 @@ export class DatabaseManager implements IDatabaseManager {
       const resolved = path.resolve(workspacePath);
 
       // Check for null bytes (path traversal attack)
-      if (resolved.includes('\0')) {
-        throw new Error('Invalid workspace path: contains null byte');
+      if (resolved.includes("\0")) {
+        throw new Error("Invalid workspace path: contains null byte");
       }
 
       // Validate path length (prevent DoS)
       if (resolved.length > 500) {
-        throw new Error('Workspace path too long');
+        throw new Error("Workspace path too long");
       }
 
       this.workspacePath = resolved;
@@ -76,22 +82,28 @@ export class DatabaseManager implements IDatabaseManager {
       this.workspacePath = null;
     }
 
-    this.workspaceHash = this.generateWorkspaceHash(this.workspacePath || undefined);
+    this.workspaceHash = this.generateWorkspaceHash(
+      this.workspacePath || undefined,
+    );
 
     // Use workspace-specific path if workspace is provided
     if (this.workspacePath) {
-      const workspaceDir = path.join(storagePath, 'projects', this.workspaceHash);
-      this.dbPath = path.join(workspaceDir, 'codepause.db');
+      const workspaceDir = path.join(
+        storagePath,
+        "projects",
+        this.workspaceHash,
+      );
+      this.dbPath = path.join(workspaceDir, "codepause.db");
 
       // SECURITY: Verify final path is within storagePath
       const normalizedDbPath = path.resolve(this.dbPath);
       const normalizedStoragePath = path.resolve(storagePath);
       if (!normalizedDbPath.startsWith(normalizedStoragePath)) {
-        throw new Error('Database path outside storage directory');
+        throw new Error("Database path outside storage directory");
       }
     } else {
       // Fallback to global DB for no-workspace scenarios (single files)
-      this.dbPath = path.join(storagePath, 'global.db');
+      this.dbPath = path.join(storagePath, "global.db");
     }
   }
 
@@ -100,19 +112,21 @@ export class DatabaseManager implements IDatabaseManager {
    */
   private generateWorkspaceHash(workspacePath?: string): string {
     if (!workspacePath) {
-      return 'global';
+      return "global";
     }
 
     // Create a short, readable hash of the workspace path
-    const hash = crypto.createHash('sha256')
+    const hash = crypto
+      .createHash("sha256")
       .update(workspacePath)
-      .digest('hex')
+      .digest("hex")
       .substring(0, 16);
 
     // Also include a readable folder name for easy identification
-    const folderName = path.basename(workspacePath)
+    const folderName = path
+      .basename(workspacePath)
       .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/[^a-z0-9-]/g, "-")
       .substring(0, 32);
 
     return `${folderName}-${hash}`;
@@ -140,12 +154,20 @@ export class DatabaseManager implements IDatabaseManager {
 
     const SQL = await initSqlJs({
       locateFile: (file: string) => {
-        const wasmPath = path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', file);
+        const wasmPath = path.join(
+          __dirname,
+          "..",
+          "..",
+          "node_modules",
+          "sql.js",
+          "dist",
+          file,
+        );
         if (fs.existsSync(wasmPath)) {
           return wasmPath;
         }
         return `node_modules/sql.js/dist/${file}`;
-      }
+      },
     });
 
     try {
@@ -156,13 +178,15 @@ export class DatabaseManager implements IDatabaseManager {
         this.db = new SQL.Database();
       }
     } catch (error) {
-      console.error('[CodePause] Database initialization failed:', error);
-      throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : String(error)}`);
+      console.error("[CodePause] Database initialization failed:", error);
+      throw new Error(
+        `Failed to initialize database: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
 
     this.createTables();
-    this.createIndices();
     this.runMigrations();
+    this.createIndices();
     this.startAutoSave();
   }
 
@@ -171,41 +195,70 @@ export class DatabaseManager implements IDatabaseManager {
    */
   private runMigrations(): void {
     // Migration: Add reviewed_in_terminal column to track terminal reviews separately
-    this.safeAddColumn('file_review_status', 'reviewed_in_terminal', 'INTEGER NOT NULL DEFAULT 0');
+    this.safeAddColumn(
+      "file_review_status",
+      "reviewed_in_terminal",
+      "INTEGER NOT NULL DEFAULT 0",
+    );
 
     // Phase 2 Migration: Add unified source tracking (AI vs Manual)
     // Replaces tool-specific tracking with unified detection system
-    this.safeAddColumn('events', 'source', 'TEXT'); // 'ai' or 'manual' (nullable for backward compatibility)
-    this.safeAddColumn('events', 'detection_method', 'TEXT'); // How the event was detected
-    this.safeAddColumn('events', 'confidence', 'TEXT'); // Detection confidence level ('high', 'medium', 'low')
+    this.safeAddColumn("events", "source", "TEXT"); // 'ai' or 'manual' (nullable for backward compatibility)
+    this.safeAddColumn("events", "detection_method", "TEXT"); // How the event was detected
+    this.safeAddColumn("events", "confidence", "TEXT"); // Detection confidence level ('high', 'medium', 'low')
 
     // Migration: Add lines_changed column for accurate review scoring
     // Tracks total lines changed (added + deleted) for review time calculation
     // Unlike lines_of_code which only tracks additions for metrics
-    this.safeAddColumn('events', 'lines_changed', 'INTEGER'); // Total changes for review scoring
+    this.safeAddColumn("events", "lines_changed", "INTEGER"); // Total changes for review scoring
 
     // Migration: Add lines_changed to file_review_status for review scoring
     // This tracks total changes (added + |deleted|) for calculating expected review time
-    this.safeAddColumn('file_review_status', 'lines_changed', 'INTEGER DEFAULT 0');
+    this.safeAddColumn(
+      "file_review_status",
+      "lines_changed",
+      "INTEGER DEFAULT 0",
+    );
 
     // Migration: Add review_method column to track manual vs automatic reviews
     // 'manual' = user clicked "Mark as Reviewed" button
     // 'automatic' = system detected proper review via file viewing, scrolling, editing
-    this.safeAddColumn('file_review_status', 'review_method', 'TEXT DEFAULT "manual"');
+    this.safeAddColumn(
+      "file_review_status",
+      "review_method",
+      'TEXT DEFAULT "manual"',
+    );
 
     // Add lines_since_review column to track only new lines since last review
     // lines_generated = total AI lines since file creation (cumulative, never resets)
     // lines_since_review = AI lines added since last review (resets to 0 when marked as reviewed)
-    this.safeAddColumn('file_review_status', 'lines_since_review', 'INTEGER DEFAULT 0');
+    this.safeAddColumn(
+      "file_review_status",
+      "lines_since_review",
+      "INTEGER DEFAULT 0",
+    );
 
     // Migration: Add lines_removed column to track line deletions
     // This allows proper tracking of AI deletions for code review
-    this.safeAddColumn('events', 'lines_removed', 'INTEGER DEFAULT 0');
+    this.safeAddColumn("events", "lines_removed", "INTEGER DEFAULT 0");
 
     // Migration: Add lines_added and lines_removed to file_review_status
     // Tracks separate addition and removal counts for better transparency
-    this.safeAddColumn('file_review_status', 'lines_added', 'INTEGER DEFAULT 0');
-    this.safeAddColumn('file_review_status', 'lines_removed', 'INTEGER DEFAULT 0');
+    this.safeAddColumn(
+      "file_review_status",
+      "lines_added",
+      "INTEGER DEFAULT 0",
+    );
+    this.safeAddColumn(
+      "file_review_status",
+      "lines_removed",
+      "INTEGER DEFAULT 0",
+    );
+
+    // Migration: Add assignment tracking columns to events
+    this.safeAddColumn("events", "assignment_id", "TEXT");
+    this.safeAddColumn("events", "ai_classification", "TEXT"); // 'permitted', 'prohibited', 'flag'
+    this.safeAddColumn("events", "policy_violation", "TEXT"); // PolicyViolationType value
   }
 
   private startAutoSave(): void {
@@ -215,7 +268,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   sync(): void {
-    if (!this.db) {return;}
+    if (!this.db) {
+      return;
+    }
 
     try {
       const data = this.db.export();
@@ -223,7 +278,7 @@ export class DatabaseManager implements IDatabaseManager {
       fs.writeFileSync(this.dbPath, buffer);
       this.operationCount = 0;
     } catch (error) {
-      console.error('[CodePause] Failed to sync database:', error);
+      console.error("[CodePause] Failed to sync database:", error);
     }
   }
 
@@ -266,13 +321,25 @@ export class DatabaseManager implements IDatabaseManager {
    * Only allows known safe SQL types
    */
   private validateSqlType(type: string): void {
-    const allowedTypes = ['TEXT', 'INTEGER', 'REAL', 'BLOB', 'NUMERIC', 'BOOLEAN', 'DATE', 'DATETIME'];
+    const allowedTypes = [
+      "TEXT",
+      "INTEGER",
+      "REAL",
+      "BLOB",
+      "NUMERIC",
+      "BOOLEAN",
+      "DATE",
+      "DATETIME",
+    ];
 
     // Extract base type by removing constraints (DEFAULT, NOT NULL, etc.)
     // Split on space and take first token, then split on ( for types like VARCHAR(255)
-    const baseType = type.trim().split(/\s+/)[0].toUpperCase().split('(')[0];
+    const baseType = type.trim().split(/\s+/)[0].toUpperCase().split("(")[0];
 
-    if (!allowedTypes.includes(baseType) && !type.match(/^(TEXT|INTEGER|VARCHAR)\(\d+\)/i)) {
+    if (
+      !allowedTypes.includes(baseType) &&
+      !type.match(/^(TEXT|INTEGER|VARCHAR)\(\d+\)/i)
+    ) {
       throw new Error(`Invalid SQL type: ${type}`);
     }
   }
@@ -282,12 +349,14 @@ export class DatabaseManager implements IDatabaseManager {
    * SECURITY: Uses whitelist validation to prevent SQL injection
    */
   private safeAddColumn(table: string, column: string, type: string): void {
-    if (!this.db) {return;}
+    if (!this.db) {
+      return;
+    }
 
     try {
       // SECURITY: Validate all identifiers before using in SQL
-      this.validateSqlIdentifier(table, 'table name');
-      this.validateSqlIdentifier(column, 'column name');
+      this.validateSqlIdentifier(table, "table name");
+      this.validateSqlIdentifier(column, "column name");
       this.validateSqlType(type);
 
       // Check if column exists by querying table info (now safe after validation)
@@ -302,6 +371,7 @@ export class DatabaseManager implements IDatabaseManager {
 
       // Add column if it doesn't exist (now safe after validation)
       if (!columns.includes(column)) {
+        // pi-lens-ignore: sql-injection
         this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
       }
     } catch (error) {
@@ -310,7 +380,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   private createTables(): void {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
@@ -333,6 +405,11 @@ export class DatabaseManager implements IDatabaseManager {
         source TEXT,
         detection_method TEXT,
         confidence TEXT,
+        lines_removed INTEGER DEFAULT 0,
+        lines_changed INTEGER,
+        assignment_id TEXT,
+        ai_classification TEXT,
+        policy_violation TEXT,
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
       )
     `);
@@ -418,6 +495,21 @@ export class DatabaseManager implements IDatabaseManager {
       )
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS assignments (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        course_id TEXT,
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        repo_url TEXT,
+        policy TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+      )
+    `);
+
     // New table: agent_sessions
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -477,54 +569,155 @@ export class DatabaseManager implements IDatabaseManager {
     `);
 
     // Migrate existing tables: Add new columns to events table
-    this.safeAddColumn('events', 'review_quality', 'TEXT');
-    this.safeAddColumn('events', 'review_quality_score', 'REAL');
-    this.safeAddColumn('events', 'is_reviewed', 'INTEGER DEFAULT 0');
-    this.safeAddColumn('events', 'is_agent_mode', 'INTEGER DEFAULT 0');
-    this.safeAddColumn('events', 'agent_session_id', 'TEXT');
+    this.safeAddColumn("events", "review_quality", "TEXT");
+    this.safeAddColumn("events", "review_quality_score", "REAL");
+    this.safeAddColumn("events", "is_reviewed", "INTEGER DEFAULT 0");
+    this.safeAddColumn("events", "is_agent_mode", "INTEGER DEFAULT 0");
+    this.safeAddColumn("events", "agent_session_id", "TEXT");
 
     // Migrate existing tables: Add new columns to daily_metrics table
     // Use NULL (not 0) for undefined values - 0 means "bad", NULL means "N/A"
-    this.safeAddColumn('daily_metrics', 'review_quality_score', 'REAL');
-    this.safeAddColumn('daily_metrics', 'unreviewed_lines', 'INTEGER');
-    this.safeAddColumn('daily_metrics', 'unreviewed_percentage', 'REAL');
-    this.safeAddColumn('daily_metrics', 'agent_session_count', 'INTEGER DEFAULT 0');
-    this.safeAddColumn('daily_metrics', 'total_ai_suggestions', 'INTEGER DEFAULT 0');
+    this.safeAddColumn("daily_metrics", "review_quality_score", "REAL");
+    this.safeAddColumn("daily_metrics", "unreviewed_lines", "INTEGER");
+    this.safeAddColumn("daily_metrics", "unreviewed_percentage", "REAL");
+    this.safeAddColumn(
+      "daily_metrics",
+      "agent_session_count",
+      "INTEGER DEFAULT 0",
+    );
+    this.safeAddColumn(
+      "daily_metrics",
+      "total_ai_suggestions",
+      "INTEGER DEFAULT 0",
+    );
 
     // Migration: Add file review time columns to daily_metrics
-    this.safeAddColumn('daily_metrics', 'average_file_review_time', 'REAL');
-    this.safeAddColumn('daily_metrics', 'reviewed_files_count', 'INTEGER');
+    this.safeAddColumn("daily_metrics", "average_file_review_time", "REAL");
+    this.safeAddColumn("daily_metrics", "reviewed_files_count", "INTEGER");
   }
 
   private createIndices(): void {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
-    this.db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_events_tool ON events(tool);
-      CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
-      CREATE INDEX IF NOT EXISTS idx_events_agent_session ON events(agent_session_id);
-      CREATE INDEX IF NOT EXISTS idx_tool_metrics_date ON tool_metrics(date);
-      CREATE INDEX IF NOT EXISTS idx_agent_sessions_start_time ON agent_sessions(start_time);
-      CREATE INDEX IF NOT EXISTS idx_agent_sessions_tool ON agent_sessions(tool);
-      CREATE INDEX IF NOT EXISTS idx_agent_sessions_was_reviewed ON agent_sessions(was_reviewed);
-      CREATE INDEX IF NOT EXISTS idx_file_review_status_file_path ON file_review_status(file_path);
-      CREATE INDEX IF NOT EXISTS idx_file_review_status_date ON file_review_status(date);
-      CREATE INDEX IF NOT EXISTS idx_file_review_status_is_reviewed ON file_review_status(is_reviewed);
-      CREATE INDEX IF NOT EXISTS idx_file_review_status_agent_session ON file_review_status(agent_session_id);
-    `);
+    const indices = [
+      { name: "idx_events_timestamp", table: "events", column: "timestamp" },
+      { name: "idx_events_tool", table: "events", column: "tool" },
+      { name: "idx_events_session", table: "events", column: "session_id" },
+      {
+        name: "idx_events_agent_session",
+        table: "events",
+        column: "agent_session_id",
+      },
+      {
+        name: "idx_events_assignment",
+        table: "events",
+        column: "assignment_id",
+      },
+      {
+        name: "idx_events_classification",
+        table: "events",
+        column: "ai_classification",
+      },
+      {
+        name: "idx_events_violation",
+        table: "events",
+        column: "policy_violation",
+      },
+      { name: "idx_tool_metrics_date", table: "tool_metrics", column: "date" },
+      {
+        name: "idx_agent_sessions_start_time",
+        table: "agent_sessions",
+        column: "start_time",
+      },
+      {
+        name: "idx_agent_sessions_tool",
+        table: "agent_sessions",
+        column: "tool",
+      },
+      {
+        name: "idx_agent_sessions_was_reviewed",
+        table: "agent_sessions",
+        column: "was_reviewed",
+      },
+      {
+        name: "idx_file_review_status_file_path",
+        table: "file_review_status",
+        column: "file_path",
+      },
+      {
+        name: "idx_file_review_status_date",
+        table: "file_review_status",
+        column: "date",
+      },
+      {
+        name: "idx_file_review_status_is_reviewed",
+        table: "file_review_status",
+        column: "is_reviewed",
+      },
+      {
+        name: "idx_file_review_status_agent_session",
+        table: "file_review_status",
+        column: "agent_session_id",
+      },
+    ];
+
+    for (const index of indices) {
+      try {
+        if (this.columnExists(index.table, index.column)) {
+          // pi-lens-ignore: sql-injection
+          this.db.exec(
+            `CREATE INDEX IF NOT EXISTS ${index.name} ON ${index.table}(${index.column})`,
+          );
+        }
+      } catch (error) {
+        // Ignore index creation errors on old databases with missing columns
+        console.warn(
+          `[CodePause] Failed to create index ${index.name}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  private columnExists(table: string, column: string): boolean {
+    if (!this.db) {
+      return false;
+    }
+
+    try {
+      this.validateSqlIdentifier(table, "table name");
+      this.validateSqlIdentifier(column, "column name");
+
+      const stmt = this.db.prepare(`PRAGMA table_info(${table})`);
+      const columns: string[] = [];
+
+      while (stmt.step()) {
+        const row = stmt.getAsObject() as any;
+        columns.push(row.name as string);
+      }
+      stmt.free();
+
+      return columns.includes(column);
+    } catch (error) {
+      return false;
+    }
   }
 
   async insertEvent(event: TrackingEvent): Promise<number> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT INTO events (
         timestamp, tool, event_type, lines_of_code, lines_removed, characters_count,
         acceptance_time_delta, file_path, language, session_id, metadata,
         review_quality, review_quality_score, is_reviewed, is_agent_mode, agent_session_id,
-        source, detection_method, confidence, lines_changed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        source, detection_method, confidence, lines_changed,
+        assignment_id, ai_classification, policy_violation
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.bind([
@@ -547,19 +740,28 @@ export class DatabaseManager implements IDatabaseManager {
       event.source ?? null, // NEW: Unified source tracking (ai/manual)
       event.detectionMethod ?? null, // NEW: Detection method metadata
       event.confidence ?? null, // NEW: Detection confidence level
-      event.linesChanged ?? null // NEW: Total changes for review scoring
+      event.linesChanged ?? null, // NEW: Total changes for review scoring
+      event.assignmentId ?? null,
+      event.aiClassification ?? null,
+      event.policyViolation ?? null,
     ]);
 
     stmt.step();
-    const lastId = this.db.exec('SELECT last_insert_rowid() as id')[0].values[0][0] as number;
+    const lastId = this.db.exec("SELECT last_insert_rowid() as id")[0]
+      .values[0][0] as number;
     stmt.free();
 
     this.incrementOperations();
     return lastId;
   }
 
-  async getEvents(startDate: string, endDate: string): Promise<TrackingEvent[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+  async getEvents(
+    startDate: string,
+    endDate: string,
+  ): Promise<TrackingEvent[]> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const startTimestamp = new Date(startDate).getTime();
     const endTimestamp = new Date(endDate).getTime() + 86400000;
@@ -574,6 +776,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const rows: EventRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as EventRecord);
     }
     stmt.free();
@@ -582,7 +785,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getSessionEvents(sessionId: string): Promise<TrackingEvent[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM events
@@ -594,6 +799,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const rows: EventRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as EventRecord);
     }
     stmt.free();
@@ -602,7 +808,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getRecentEvents(limit: number): Promise<TrackingEvent[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM events
@@ -614,6 +822,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const rows: EventRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as EventRecord);
     }
     stmt.free();
@@ -622,7 +831,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getDailyMetrics(date: string): Promise<DailyMetrics | null> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM daily_metrics WHERE date = ?
@@ -632,20 +843,27 @@ export class DatabaseManager implements IDatabaseManager {
 
     let row: DailyMetricsRecord | undefined;
     if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       row = stmt.getAsObject() as unknown as DailyMetricsRecord;
     }
     stmt.free();
 
-    if (!row) {return null;}
+    if (!row) {
+      return null;
+    }
 
-   
     const toolBreakdown = await this.getToolMetrics(date);
 
     return this.mapDailyMetricsRecordToMetrics(row, toolBreakdown);
   }
 
-  async getDailyMetricsRange(startDate: string, endDate: string): Promise<DailyMetrics[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+  async getDailyMetricsRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<DailyMetrics[]> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM daily_metrics
@@ -657,6 +875,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const rows: DailyMetricsRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as DailyMetricsRecord);
     }
     stmt.free();
@@ -665,14 +884,16 @@ export class DatabaseManager implements IDatabaseManager {
       rows.map(async (row) => {
         const toolBreakdown = await this.getToolMetrics(row.date);
         return this.mapDailyMetricsRecordToMetrics(row, toolBreakdown);
-      })
+      }),
     );
 
     return metricsWithTools;
   }
 
   async insertOrUpdateDailyMetrics(metrics: DailyMetrics): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO daily_metrics (
@@ -694,21 +915,30 @@ export class DatabaseManager implements IDatabaseManager {
       metrics.averageReviewTime,
       metrics.sessionCount,
       // Use null for undefined values (not 0!)
-      metrics.reviewQualityScore !== undefined ? metrics.reviewQualityScore : null,
+      metrics.reviewQualityScore !== undefined
+        ? metrics.reviewQualityScore
+        : null,
       metrics.unreviewedLines !== undefined ? metrics.unreviewedLines : null,
-      metrics.unreviewedPercentage !== undefined ? metrics.unreviewedPercentage : null,
-      metrics.averageFileReviewTime !== undefined ? metrics.averageFileReviewTime : null,
-      metrics.reviewedFilesCount !== undefined ? metrics.reviewedFilesCount : null
+      metrics.unreviewedPercentage !== undefined
+        ? metrics.unreviewedPercentage
+        : null,
+      metrics.averageFileReviewTime !== undefined
+        ? metrics.averageFileReviewTime
+        : null,
+      metrics.reviewedFilesCount !== undefined
+        ? metrics.reviewedFilesCount
+        : null,
     ]);
 
-   
     for (const toolMetrics of Object.values(metrics.toolBreakdown)) {
       await this.insertOrUpdateToolMetrics(metrics.date, toolMetrics);
     }
   }
 
   async getToolMetrics(date: string): Promise<Record<AITool, ToolMetrics>> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM tool_metrics WHERE date = ?
@@ -718,6 +948,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const rows: ToolMetricsRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as ToolMetricsRecord);
     }
     stmt.free();
@@ -731,15 +962,20 @@ export class DatabaseManager implements IDatabaseManager {
         acceptedCount: row.accepted_count,
         rejectedCount: row.rejected_count,
         linesGenerated: row.lines_generated,
-        averageReviewTime: row.average_review_time
+        averageReviewTime: row.average_review_time,
       };
     }
 
     return breakdown as Record<AITool, ToolMetrics>;
   }
 
-  async insertOrUpdateToolMetrics(date: string, metrics: ToolMetrics): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+  async insertOrUpdateToolMetrics(
+    date: string,
+    metrics: ToolMetrics,
+  ): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO tool_metrics (
@@ -755,12 +991,14 @@ export class DatabaseManager implements IDatabaseManager {
       metrics.acceptedCount,
       metrics.rejectedCount,
       metrics.linesGenerated,
-      metrics.averageReviewTime
+      metrics.averageReviewTime,
     ]);
   }
 
   async insertOrUpdateSession(session: CodingSession): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO sessions (
@@ -777,12 +1015,14 @@ export class DatabaseManager implements IDatabaseManager {
       session.eventCount,
       session.aiLinesGenerated,
       session.manualLinesWritten,
-      JSON.stringify(session.toolsUsed)
+      JSON.stringify(session.toolsUsed),
     ]);
   }
 
   async getSession(sessionId: string): Promise<CodingSession | null> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM sessions WHERE id = ?
@@ -792,11 +1032,14 @@ export class DatabaseManager implements IDatabaseManager {
 
     let row: SessionRecord | undefined;
     if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       row = stmt.getAsObject() as unknown as SessionRecord;
     }
     stmt.free();
 
-    if (!row) {return null;}
+    if (!row) {
+      return null;
+    }
 
     return {
       id: row.id,
@@ -807,12 +1050,14 @@ export class DatabaseManager implements IDatabaseManager {
       aiLinesGenerated: row.ai_lines_generated,
       manualLinesWritten: row.manual_lines_written,
       // Security: Safe JSON parsing with fallback
-      toolsUsed: safeJsonParse(row.tools_used, [])
+      toolsUsed: safeJsonParse(row.tools_used, []),
     };
   }
 
   async getRecentSessions(limit: number): Promise<CodingSession[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM sessions
@@ -824,11 +1069,12 @@ export class DatabaseManager implements IDatabaseManager {
 
     const rows: SessionRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as SessionRecord);
     }
     stmt.free();
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: row.id,
       startTime: row.start_time,
       endTime: row.end_time ?? undefined,
@@ -837,40 +1083,49 @@ export class DatabaseManager implements IDatabaseManager {
       aiLinesGenerated: row.ai_lines_generated,
       manualLinesWritten: row.manual_lines_written,
       // Security: Safe JSON parsing with fallback
-      toolsUsed: safeJsonParse(row.tools_used, [])
+      toolsUsed: safeJsonParse(row.tools_used, []),
     }));
   }
 
   async getAllAchievements(): Promise<Achievement[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`SELECT * FROM achievements`);
 
     const rows: AchievementRecord[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       rows.push(stmt.getAsObject() as unknown as AchievementRecord);
     }
     stmt.free();
 
-    return rows.map(row => ({
+    return rows.map((row) => ({
       id: row.id,
-      title: '',
-      description: '',
-      category: 'review' as const,
-      icon: '',
+      title: "",
+      description: "",
+      category: "review" as const,
+      icon: "",
       requirement: {
-        type: 'count' as const,
-        metric: '',
-        target: 0
+        type: "count" as const,
+        metric: "",
+        target: 0,
       },
       unlocked: row.unlocked === 1,
       unlockedAt: row.unlocked_at ?? undefined,
-      progress: row.progress
+      progress: row.progress,
     }));
   }
 
-  async updateAchievement(achievementId: string, unlocked: boolean, progress: number): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+  async updateAchievement(
+    achievementId: string,
+    unlocked: boolean,
+    progress: number,
+  ): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO achievements (id, unlocked, unlocked_at, progress)
@@ -881,12 +1136,14 @@ export class DatabaseManager implements IDatabaseManager {
       achievementId,
       unlocked ? 1 : 0,
       unlocked ? Date.now() : null,
-      progress
+      progress,
     ]);
   }
 
   async getConfig(key: string): Promise<unknown> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`SELECT value FROM config WHERE key = ?`);
 
@@ -894,11 +1151,14 @@ export class DatabaseManager implements IDatabaseManager {
 
     let row: ConfigRecord | undefined;
     if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       row = stmt.getAsObject() as unknown as ConfigRecord;
     }
     stmt.free();
 
-    if (!row) {return null;}
+    if (!row) {
+      return null;
+    }
 
     // Security: Safe JSON parsing with fallback to raw value
     const parsed = safeJsonParse(row.value, null);
@@ -906,24 +1166,29 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async setConfig(key: string, value: unknown): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO config (key, value)
       VALUES (?, ?)
     `);
 
-    const jsonValue = typeof value === 'string' ? value : JSON.stringify(value);
+    const jsonValue = typeof value === "string" ? value : JSON.stringify(value);
     stmt.run([key, jsonValue]);
   }
 
   async getSnoozeState(): Promise<SnoozeState> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`SELECT * FROM snooze_state WHERE id = 1`);
 
     let row: SnoozeStateRecord | undefined;
     if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       row = stmt.getAsObject() as unknown as SnoozeStateRecord;
     }
     stmt.free();
@@ -935,12 +1200,14 @@ export class DatabaseManager implements IDatabaseManager {
     return {
       snoozed: row.snoozed === 1,
       snoozeUntil: row.snooze_until ?? undefined,
-      snoozeReason: row.snooze_reason ?? undefined
+      snoozeReason: row.snooze_reason ?? undefined,
     };
   }
 
   async setSnoozeState(state: SnoozeState): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       UPDATE snooze_state
@@ -951,12 +1218,14 @@ export class DatabaseManager implements IDatabaseManager {
     stmt.run([
       state.snoozed ? 1 : 0,
       state.snoozeUntil ?? null,
-      state.snoozeReason ?? null
+      state.snoozeReason ?? null,
     ]);
   }
 
   async getAlertHistory(alertType: string): Promise<AlertHistory | null> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM alert_history WHERE alert_type = ?
@@ -966,21 +1235,29 @@ export class DatabaseManager implements IDatabaseManager {
 
     let row: AlertHistoryRecord | undefined;
     if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       row = stmt.getAsObject() as unknown as AlertHistoryRecord;
     }
     stmt.free();
 
-    if (!row) {return null;}
+    if (!row) {
+      return null;
+    }
 
     return {
       alertType: row.alert_type as AlertType,
       lastShown: row.last_shown,
-      count: row.count
+      count: row.count,
     };
   }
 
-  async updateAlertHistory(alertType: string, timestamp: number): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+  async updateAlertHistory(
+    alertType: string,
+    timestamp: number,
+  ): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT INTO alert_history (alert_type, last_shown, count)
@@ -1017,13 +1294,21 @@ export class DatabaseManager implements IDatabaseManager {
       // NEW: Phase 2 unified source tracking
       source: record.source ? (record.source as CodeSource) : undefined,
       detectionMethod: record.detection_method ?? undefined,
-      confidence: record.confidence as 'high' | 'medium' | 'low' | undefined
+      confidence: record.confidence as "high" | "medium" | "low" | undefined,
+      // Assignment tracking
+      assignmentId: record.assignment_id ?? undefined,
+      aiClassification: record.ai_classification
+        ? (record.ai_classification as AIClassification)
+        : undefined,
+      policyViolation: record.policy_violation
+        ? (record.policy_violation as PolicyViolationType)
+        : undefined,
     };
   }
 
   private mapDailyMetricsRecordToMetrics(
     record: DailyMetricsRecord,
-    toolBreakdown: Record<AITool, ToolMetrics>
+    toolBreakdown: Record<AITool, ToolMetrics>,
   ): DailyMetrics {
     return {
       date: record.date,
@@ -1040,7 +1325,7 @@ export class DatabaseManager implements IDatabaseManager {
       unreviewedPercentage: record.unreviewed_percentage ?? undefined,
       agentSessionCount: record.agent_session_count ?? undefined,
       averageFileReviewTime: record.average_file_review_time ?? undefined,
-      reviewedFilesCount: record.reviewed_files_count ?? undefined
+      reviewedFilesCount: record.reviewed_files_count ?? undefined,
     };
   }
 
@@ -1049,26 +1334,27 @@ export class DatabaseManager implements IDatabaseManager {
     totalSessions: number;
     databaseSize: number;
   }> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
-   
-    const eventsStmt = this.db.prepare('SELECT COUNT(*) as count FROM events');
+    const eventsStmt = this.db.prepare("SELECT COUNT(*) as count FROM events");
     let eventsCount = { count: 0 };
     if (eventsStmt.step()) {
       eventsCount = eventsStmt.getAsObject() as { count: number };
     }
     eventsStmt.free();
 
-   
-    const sessionsStmt = this.db.prepare('SELECT COUNT(*) as count FROM sessions');
+    const sessionsStmt = this.db.prepare(
+      "SELECT COUNT(*) as count FROM sessions",
+    );
     let sessionsCount = { count: 0 };
     if (sessionsStmt.step()) {
       sessionsCount = sessionsStmt.getAsObject() as { count: number };
     }
     sessionsStmt.free();
 
-   
-    const fs = require('fs');
+    const fs = require("fs");
     let dbSize = 0;
     try {
       const stats = fs.statSync(this.dbPath);
@@ -1080,7 +1366,7 @@ export class DatabaseManager implements IDatabaseManager {
     return {
       totalEvents: eventsCount.count,
       totalSessions: sessionsCount.count,
-      databaseSize: dbSize
+      databaseSize: dbSize,
     };
   }
 
@@ -1090,10 +1376,10 @@ export class DatabaseManager implements IDatabaseManager {
    */
   async countEvents(): Promise<number> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
-    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM events');
+    const stmt = this.db.prepare("SELECT COUNT(*) as count FROM events");
     let result = { count: 0 };
     if (stmt.step()) {
       result = stmt.getAsObject() as { count: number };
@@ -1110,16 +1396,16 @@ export class DatabaseManager implements IDatabaseManager {
    */
   async deleteEventsBefore(timestamp: number): Promise<number> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
-    const stmt = this.db.prepare('DELETE FROM events WHERE timestamp < ?');
+    const stmt = this.db.prepare("DELETE FROM events WHERE timestamp < ?");
     stmt.bind([timestamp]);
     stmt.step();
     stmt.free();
 
     // Get count of deleted rows using changes() function
-    const changesStmt = this.db.prepare('SELECT changes() as deleted');
+    const changesStmt = this.db.prepare("SELECT changes() as deleted");
     let deletedCount = { deleted: 0 };
     if (changesStmt.step()) {
       deletedCount = changesStmt.getAsObject() as { deleted: number };
@@ -1138,10 +1424,12 @@ export class DatabaseManager implements IDatabaseManager {
    */
   async getOldestEvent(): Promise<{ timestamp: number } | null> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
-    const stmt = this.db.prepare('SELECT timestamp FROM events ORDER BY timestamp ASC LIMIT 1');
+    const stmt = this.db.prepare(
+      "SELECT timestamp FROM events ORDER BY timestamp ASC LIMIT 1",
+    );
     let result: { timestamp: number } | null = null;
 
     if (stmt.step()) {
@@ -1158,10 +1446,12 @@ export class DatabaseManager implements IDatabaseManager {
    */
   async getNewestEvent(): Promise<{ timestamp: number } | null> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
-    const stmt = this.db.prepare('SELECT timestamp FROM events ORDER BY timestamp DESC LIMIT 1');
+    const stmt = this.db.prepare(
+      "SELECT timestamp FROM events ORDER BY timestamp DESC LIMIT 1",
+    );
     let result: { timestamp: number } | null = null;
 
     if (stmt.step()) {
@@ -1179,9 +1469,12 @@ export class DatabaseManager implements IDatabaseManager {
    * @param endDate Unix timestamp in milliseconds
    * @returns Array of tracking events
    */
-  async getEventsByDateRange(startDate: number, endDate: number): Promise<TrackingEvent[]> {
+  async getEventsByDateRange(
+    startDate: number,
+    endDate: number,
+  ): Promise<TrackingEvent[]> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
     const stmt = this.db.prepare(`
@@ -1201,10 +1494,196 @@ export class DatabaseManager implements IDatabaseManager {
     return events;
   }
 
+  // ========== Assignment CRUD Methods ==========
+
+  async insertOrUpdateAssignment(assignment: Assignment): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO assignments (
+        id, name, course_id, start_date, end_date, repo_url, policy, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run([
+      assignment.id,
+      assignment.name,
+      assignment.courseId ?? null,
+      assignment.startDate,
+      assignment.endDate,
+      assignment.repoUrl ?? null,
+      JSON.stringify(assignment.policy),
+      assignment.isActive ? 1 : 0,
+      assignment.createdAt,
+      assignment.updatedAt,
+    ]);
+  }
+
+  async getAssignment(id: string): Promise<Assignment | null> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(`SELECT * FROM assignments WHERE id = ?`);
+    stmt.bind([id]);
+
+    let row: AssignmentRecord | undefined;
+    if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
+      row = stmt.getAsObject() as unknown as AssignmentRecord;
+    }
+    stmt.free();
+
+    if (!row) {
+      return null;
+    }
+    return this.mapAssignmentRecordToAssignment(row);
+  }
+
+  async getAssignments(): Promise<Assignment[]> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(
+      `SELECT * FROM assignments ORDER BY created_at DESC`,
+    );
+
+    const rows: AssignmentRecord[] = [];
+    while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
+      rows.push(stmt.getAsObject() as unknown as AssignmentRecord);
+    }
+    stmt.free();
+
+    return rows.map(this.mapAssignmentRecordToAssignment);
+  }
+
+  async getActiveAssignment(): Promise<Assignment | null> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(
+      `SELECT * FROM assignments WHERE is_active = 1 LIMIT 1`,
+    );
+
+    let row: AssignmentRecord | undefined;
+    if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
+      row = stmt.getAsObject() as unknown as AssignmentRecord;
+    }
+    stmt.free();
+
+    if (!row) {
+      return null;
+    }
+    return this.mapAssignmentRecordToAssignment(row);
+  }
+
+  async setActiveAssignment(id: string | null): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    // First deactivate all
+    this.db.exec(`UPDATE assignments SET is_active = 0`);
+
+    if (id) {
+      const stmt = this.db.prepare(
+        `UPDATE assignments SET is_active = 1, updated_at = ? WHERE id = ?`,
+      );
+      stmt.run([Date.now(), id]);
+    }
+  }
+
+  async getEventsForAssignment(
+    assignment: Assignment,
+  ): Promise<TrackingEvent[]> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    // Events explicitly tagged with this assignment, plus untagged events
+    // recorded inside the assignment window (e.g. work done before the
+    // assignment was created or while it was inactive). Events tagged to a
+    // different assignment are never pulled in. The window end includes the
+    // full end day, matching PolicyEngine.detectTrackingGaps.
+    const windowStart = new Date(assignment.startDate).getTime();
+    const windowEnd = new Date(assignment.endDate).getTime() + 86400000;
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM events
+      WHERE assignment_id = ?
+         OR (assignment_id IS NULL AND timestamp >= ? AND timestamp < ?)
+      ORDER BY timestamp ASC
+    `);
+    stmt.bind([assignment.id, windowStart, windowEnd]);
+
+    const events: TrackingEvent[] = [];
+    while (stmt.step()) {
+      const record = stmt.getAsObject() as EventRecord;
+      events.push(this.mapEventRecordToEvent(record));
+    }
+    stmt.free();
+
+    return events;
+  }
+
+  private mapAssignmentRecordToAssignment(
+    record: AssignmentRecord,
+  ): Assignment {
+    return {
+      id: record.id,
+      name: record.name,
+      courseId: record.course_id ?? undefined,
+      startDate: record.start_date,
+      endDate: record.end_date,
+      repoUrl: record.repo_url ?? undefined,
+      policy: safeJsonParse(
+        record.policy,
+        this.createDefaultAssignmentPolicy(),
+      ),
+      isActive: record.is_active === 1,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+    };
+  }
+
+  private createDefaultAssignmentPolicy(): AssignmentPolicy {
+    return {
+      maxAuthorshipPercentage: 30,
+      minOwnershipScore: 40,
+      exemptFileGlobs: [
+        "**/README*",
+        "**/*.md",
+        "**/package.json",
+        "**/package-lock.json",
+        "**/yarn.lock",
+        "**/pnpm-lock.yaml",
+      ],
+      prohibitedMethods: [
+        AIDetectionMethod.ExternalFileChange,
+        AIDetectionMethod.GitCommitMarker,
+      ],
+      permittedMethods: [AIDetectionMethod.InlineCompletionAPI],
+      flaggedMethods: [
+        AIDetectionMethod.LargePaste,
+        AIDetectionMethod.ChangeVelocity,
+      ],
+      minLargePasteReviewTimeMs: 5000,
+      maxTrackingGapSeconds: 1800,
+    };
+  }
+
   // ========== NEW: Agent Session CRUD Methods ==========
 
   async insertAgentSession(session: AgentSession): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       INSERT INTO agent_sessions (
@@ -1232,7 +1711,7 @@ export class DatabaseManager implements IDatabaseManager {
       JSON.stringify(session.filesAffected),
       session.alertShown ? 1 : 0,
       session.alertShownAt ?? null,
-      session.metadata ? JSON.stringify(session.metadata) : null
+      session.metadata ? JSON.stringify(session.metadata) : null,
     ]);
 
     stmt.step();
@@ -1241,13 +1720,16 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getAgentSession(sessionId: string): Promise<AgentSession | null> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
-    const stmt = this.db.prepare('SELECT * FROM agent_sessions WHERE id = ?');
+    const stmt = this.db.prepare("SELECT * FROM agent_sessions WHERE id = ?");
     stmt.bind([sessionId]);
 
     let session: AgentSession | null = null;
     if (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       const record = stmt.getAsObject() as unknown as AgentSessionRecord;
       session = this.mapAgentSessionRecordToSession(record);
     }
@@ -1257,7 +1739,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getRecentAgentSessions(limit: number = 10): Promise<AgentSession[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM agent_sessions
@@ -1268,6 +1752,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const sessions: AgentSession[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       const record = stmt.getAsObject() as unknown as AgentSessionRecord;
       sessions.push(this.mapAgentSessionRecordToSession(record));
     }
@@ -1276,7 +1761,9 @@ export class DatabaseManager implements IDatabaseManager {
     return sessions;
   }
 
-  private mapAgentSessionRecordToSession(record: AgentSessionRecord): AgentSession {
+  private mapAgentSessionRecordToSession(
+    record: AgentSessionRecord,
+  ): AgentSession {
     return {
       id: record.id,
       tool: record.tool as AITool,
@@ -1295,20 +1782,24 @@ export class DatabaseManager implements IDatabaseManager {
         closedFileModifications: false,
         bulkCodeGeneration: false,
         gitCommitSignature: false,
-        consistentSource: false
+        consistentSource: false,
       }),
       confidence: record.confidence as any,
       filesAffected: safeJsonParse(record.files_affected, []),
       alertShown: record.alert_shown === 1,
       alertShownAt: record.alert_shown_at ?? undefined,
-      metadata: safeJsonParse(record.metadata, undefined)
+      metadata: safeJsonParse(record.metadata, undefined),
     };
   }
 
   // ========== NEW: File Review Status CRUD Methods ==========
 
-  async insertOrUpdateFileReviewStatus(status: FileReviewStatus): Promise<void> {
-    if (!this.db) {throw new Error('Database not initialized');}
+  async insertOrUpdateFileReviewStatus(
+    status: FileReviewStatus,
+  ): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     // Preserve manually marked as reviewed status
     // If the file is already marked as reviewed in the database, keep it that way
@@ -1316,10 +1807,12 @@ export class DatabaseManager implements IDatabaseManager {
     //
     // IMPORTANT: sql.js returns arrays, not objects. Column indices:
     // 0: id, 1: file_path, 2: date, 3: tool, 4: review_quality, 5: review_score, 6: is_reviewed
-    const rawRecord = this.db.prepare(`
+    const rawRecord = this.db
+      .prepare(`
       SELECT * FROM file_review_status
       WHERE file_path = ? AND date = ? AND tool = ?
-    `).get([status.filePath, status.date, status.tool]);
+    `)
+      .get([status.filePath, status.date, status.tool]);
 
     // sql.js returns an array, not an object with named properties
     const existingRecord = rawRecord as number[] | undefined;
@@ -1327,17 +1820,21 @@ export class DatabaseManager implements IDatabaseManager {
     const existingReviewScore = existingRecord?.[5]; // Index 5 = review_score column
     const existingReviewQuality = existingRecord?.[4]; // Index 4 = review_quality column
     // Index 9 = agent_session_id column (may be string or null in DB)
-    const existingAgentSessionId = existingRecord?.[9] as string | null | undefined;
+    const existingAgentSessionId = existingRecord?.[9] as
+      | string
+      | null
+      | undefined;
 
     // Check if this is the SAME agent session or a NEW one
     // If it's a new agent session, the file was modified again and needs re-review
     //
     // CRITICAL FIX: Only consider it a "new modification" if it's a different session
     // If it's the same agent session continuing work, preserve reviewed status
-    const hasDifferentSession = existingAgentSessionId !== null &&
-                                existingAgentSessionId !== undefined &&
-                                status.agentSessionId !== undefined &&
-                                status.agentSessionId !== existingAgentSessionId;
+    const hasDifferentSession =
+      existingAgentSessionId !== null &&
+      existingAgentSessionId !== undefined &&
+      status.agentSessionId !== undefined &&
+      status.agentSessionId !== existingAgentSessionId;
 
     const isNewModification = hasDifferentSession;
 
@@ -1347,8 +1844,11 @@ export class DatabaseManager implements IDatabaseManager {
     // - If new modification: Set to false (file needs re-review)
     // - If same modification: Preserve existing reviewed status
     const wasManuallyReviewed = existingRecord && existingIsReviewed === 1;
-    const shouldPreserveReviewedStatus = wasManuallyReviewed && !isNewModification;
-    const finalIsReviewed = shouldPreserveReviewedStatus ? true : status.isReviewed;
+    const shouldPreserveReviewedStatus =
+      wasManuallyReviewed && !isNewModification;
+    const finalIsReviewed = shouldPreserveReviewedStatus
+      ? true
+      : status.isReviewed;
 
     // Get existing review data
     // Index 14 = total_review_time in the original table schema
@@ -1358,9 +1858,17 @@ export class DatabaseManager implements IDatabaseManager {
     // - ALWAYS preserve if they exist (partial review data is valuable!)
     // - Even if new modification, the ALREADY REVIEWED portion still has value
     // - Only use status values if no existing values (or explicitly provided)
-    const shouldPreserveReviewData = existingRecord && ((existingReviewScore ?? 0) > 0 || existingTotalReviewTime > 0);
-    const finalReviewScore = shouldPreserveReviewData && existingReviewScore ? existingReviewScore : status.reviewScore;
-    const finalReviewQuality = shouldPreserveReviewData && existingReviewQuality ? existingReviewQuality : status.reviewQuality;
+    const shouldPreserveReviewData =
+      existingRecord &&
+      ((existingReviewScore ?? 0) > 0 || existingTotalReviewTime > 0);
+    const finalReviewScore =
+      shouldPreserveReviewData && existingReviewScore
+        ? existingReviewScore
+        : status.reviewScore;
+    const finalReviewQuality =
+      shouldPreserveReviewData && existingReviewQuality
+        ? existingReviewQuality
+        : status.reviewQuality;
 
     // Handle lines_since_review tracking
     // - MetricsCollector.ts already accumulates linesSinceReview before sending to database
@@ -1402,14 +1910,19 @@ export class DatabaseManager implements IDatabaseManager {
     // This prevents periodic aggregation from resetting these values to 0.
     const isLinesAddedProvided = status.linesAdded !== undefined;
     const isLinesRemovedProvided = status.linesRemoved !== undefined;
-    const finalLinesAdded = isLinesAddedProvided ? (status.linesAdded ?? 0) : existingLinesAdded;
-    const finalLinesRemoved = isLinesRemovedProvided ? (status.linesRemoved ?? 0) : existingLinesRemoved;
+    const finalLinesAdded = isLinesAddedProvided
+      ? (status.linesAdded ?? 0)
+      : existingLinesAdded;
+    const finalLinesRemoved = isLinesRemovedProvided
+      ? (status.linesRemoved ?? 0)
+      : existingLinesRemoved;
 
     // CRITICAL FIX: Preserve total_review_time - ALWAYS preserve if exists
     // Preserves time already spent reviewing, even if file needs re-review after new modifications
-    const finalTotalReviewTime = shouldPreserveReviewData && existingTotalReviewTime > 0
-      ? existingTotalReviewTime
-      : status.totalReviewTime;
+    const finalTotalReviewTime =
+      shouldPreserveReviewData && existingTotalReviewTime > 0
+        ? existingTotalReviewTime
+        : status.totalReviewTime;
 
     // Always update updated_at timestamp to NOW
     // Preserve created_at from existing record (or use firstGeneratedAt for new records)
@@ -1456,7 +1969,7 @@ export class DatabaseManager implements IDatabaseManager {
       status.reviewSessionsCount,
       status.reviewedInTerminal ? 1 : 0,
       createdAt,
-      now
+      now,
     ]);
 
     stmt.step();
@@ -1465,7 +1978,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getUnreviewedFiles(date: string): Promise<FileReviewStatus[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM file_review_status
@@ -1476,6 +1991,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const files: FileReviewStatus[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       const record = stmt.getAsObject() as unknown as FileReviewStatusRecord;
       files.push(this.mapFileReviewStatusRecordToStatus(record));
     }
@@ -1485,7 +2001,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getAllFilesForDate(date: string): Promise<FileReviewStatus[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     // AUTHORSHIP FIX: Get ALL files for a date (reviewed or not) for authorship calculation
     const stmt = this.db.prepare(`
@@ -1497,6 +2015,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const files: FileReviewStatus[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       const record = stmt.getAsObject() as unknown as FileReviewStatusRecord;
       files.push(this.mapFileReviewStatusRecordToStatus(record));
     }
@@ -1506,7 +2025,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getTerminalReviewedFiles(date: string): Promise<FileReviewStatus[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     // Get terminal workflow files that haven't been opened in editor yet
     // These files have reviewed_in_terminal=1 but still unreviewed (score=0)
@@ -1519,6 +2040,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const files: FileReviewStatus[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       const record = stmt.getAsObject() as unknown as FileReviewStatusRecord;
       files.push(this.mapFileReviewStatusRecordToStatus(record));
     }
@@ -1528,7 +2050,9 @@ export class DatabaseManager implements IDatabaseManager {
   }
 
   async getFileReviewsForDate(date: string): Promise<FileReviewStatus[]> {
-    if (!this.db) {throw new Error('Database not initialized');}
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
 
     const stmt = this.db.prepare(`
       SELECT * FROM file_review_status
@@ -1539,6 +2063,7 @@ export class DatabaseManager implements IDatabaseManager {
 
     const files: FileReviewStatus[] = [];
     while (stmt.step()) {
+      // SAFETY: sql.js getAsObject() returns an untyped row object; the table schema guarantees the record shape.
       const record = stmt.getAsObject() as unknown as FileReviewStatusRecord;
       files.push(this.mapFileReviewStatusRecordToStatus(record));
     }
@@ -1547,8 +2072,9 @@ export class DatabaseManager implements IDatabaseManager {
     return files;
   }
 
-  private mapFileReviewStatusRecordToStatus(record: FileReviewStatusRecord): FileReviewStatus {
-
+  private mapFileReviewStatusRecordToStatus(
+    record: FileReviewStatusRecord,
+  ): FileReviewStatus {
     return {
       filePath: record.file_path,
       date: record.date,
@@ -1576,13 +2102,20 @@ export class DatabaseManager implements IDatabaseManager {
       editsMade: record.edits_made === 1,
       lastOpenedAt: record.last_opened_at ?? undefined,
       reviewSessionsCount: record.review_sessions_count,
-      reviewedInTerminal: record.reviewed_in_terminal === 1
+      reviewedInTerminal: record.reviewed_in_terminal === 1,
     };
   }
 
-  async markFileAsReviewed(filePath: string, tool: string, date: string, developerLevel: string = 'mid', reviewMethod: 'manual' | 'automatic' = 'manual', actualReviewTime?: number): Promise<void> {
+  async markFileAsReviewed(
+    filePath: string,
+    tool: string,
+    date: string,
+    developerLevel: string = "mid",
+    reviewMethod: "manual" | "automatic" = "manual",
+    actualReviewTime?: number,
+  ): Promise<void> {
     if (!this.db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
     const now = Date.now();
@@ -1601,16 +2134,22 @@ export class DatabaseManager implements IDatabaseManager {
         SELECT * FROM file_review_status
         WHERE file_path = ? AND tool = ? AND date = ?
       `);
-      const fileData = fileQuery.get([filePath, tool, date]) as number[] | undefined;
+      const fileData = fileQuery.get([filePath, tool, date]) as
+        | number[]
+        | undefined;
 
       // Junior: 600ms per line, Mid: 400ms per line, Senior: 200ms per line
-      const msPerLine = developerLevel === 'senior' ? 200 : developerLevel === 'junior' ? 600 : 400;
+      const msPerLine =
+        developerLevel === "senior"
+          ? 200
+          : developerLevel === "junior"
+            ? 600
+            : 400;
 
       // Use lines_changed if available, otherwise fall back to lines_generated
       const linesForReview = fileData?.[26] || fileData?.[7] || 50;
       finalReviewTime = Math.max(5000, linesForReview * msPerLine); // Min 5 seconds
     }
-
 
     const stmt = this.db.prepare(`
       UPDATE file_review_status

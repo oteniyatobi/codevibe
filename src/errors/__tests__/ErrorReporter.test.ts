@@ -64,7 +64,7 @@ describe('ErrorReporter', () => {
 
   describe('initialization', () => {
     it('should create output channel on initialization', () => {
-      expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('CodePause Errors');
+      expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('CodeVibe Errors');
     });
 
     it('should work without telemetry service', () => {
@@ -128,7 +128,7 @@ describe('ErrorReporter', () => {
       reporter.reportError(error, 'test');
 
       expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-        expect.stringContaining('CodePause Error: test'),
+        expect.stringContaining('CodeVibe Error: test'),
         'Report Bug',
         'Show Details',
         'Dismiss'
@@ -225,7 +225,7 @@ describe('ErrorReporter', () => {
 
       expect(bodyMatch).toBeTruthy();
       const decodedBody = decodeURIComponent(bodyMatch![1]);
-      expect(decodedBody).toContain('CodePause Version: 0.2.0');
+        expect(decodedBody).toContain('CodeVibe Version: 0.2.0');
     });
 
     it('should include VS Code version in issue body', async () => {
@@ -284,7 +284,7 @@ describe('ErrorReporter', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
 
       expect(mockOutputChannel.clear).toHaveBeenCalled();
-      expect(mockOutputChannel.appendLine).toHaveBeenCalledWith('CodePause Error Details');
+      expect(mockOutputChannel.appendLine).toHaveBeenCalledWith('CodeVibe Error Details');
       expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(expect.stringContaining('Error Type: database'));
       expect(mockOutputChannel.appendLine).toHaveBeenCalledWith(expect.stringContaining('Message: Test error'));
       expect(mockOutputChannel.show).toHaveBeenCalled();

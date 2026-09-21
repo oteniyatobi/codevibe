@@ -30,7 +30,7 @@ export class SettingsProvider {
 
     this.panel = vscode.window.createWebviewPanel(
       'codePauseSettings',
-      'CodePause Settings',
+      'CodeVibe Settings',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -131,7 +131,7 @@ export class SettingsProvider {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodePause Settings</title>
+    <title>CodeVibe Settings</title>
     <style>
         * {
             margin: 0;
@@ -300,7 +300,7 @@ export class SettingsProvider {
 </head>
 <body>
     <div class="header">
-        <h1>⚙️ CodePause Settings</h1>
+        <h1>⚙️ CodeVibe Settings</h1>
         <p class="subtitle">Customize your mindful coding experience</p>
     </div>
 

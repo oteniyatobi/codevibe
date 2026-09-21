@@ -33,7 +33,7 @@ export class StatusBarManager {
     );
 
     this.statusBarItem.command = 'codePause.openDashboard';
-    this.statusBarItem.tooltip = 'Click to open CodePause dashboard';
+    this.statusBarItem.tooltip = 'Click to open CodeVibe dashboard';
   }
 
   async initialize(): Promise<void> {
@@ -94,21 +94,21 @@ export class StatusBarManager {
   }
 
   private showIdleState(): void {
-    this.statusBarItem.text = '🤖 CodePause';
+    this.statusBarItem.text = '🤖 CodeVibe';
     this.statusBarItem.color = undefined;
-    this.statusBarItem.tooltip = 'CodePause is monitoring your AI usage. Start coding to see stats!';
+    this.statusBarItem.tooltip = 'CodeVibe is monitoring your AI usage. Start coding to see stats!';
   }
 
   private showSnoozedState(): void {
     this.statusBarItem.text = '🤖 💤 Snoozed';
     this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.warningBackground');
-    this.statusBarItem.tooltip = 'CodePause alerts are snoozed. Click to open dashboard.';
+    this.statusBarItem.tooltip = 'CodeVibe alerts are snoozed. Click to open dashboard.';
   }
 
   private showErrorState(): void {
     this.statusBarItem.text = '🤖 Error';
     this.statusBarItem.color = new vscode.ThemeColor('statusBarItem.errorBackground');
-    this.statusBarItem.tooltip = 'CodePause encountered an error. Check logs for details.';
+    this.statusBarItem.tooltip = 'CodeVibe encountered an error. Check logs for details.';
   }
 
   private getColorForAIPercentage(aiPercentage: number, maxThreshold: number): string | vscode.ThemeColor | undefined {
@@ -129,7 +129,7 @@ export class StatusBarManager {
 
   private buildTooltip(metrics: DailyMetrics, maxThreshold: number): string {
     const lines: string[] = [
-      '**CodePause - Today\'s Stats**',
+      '**CodeVibe - Today\'s Stats**',
       '',
       `AI Code: ${Math.round(metrics.aiPercentage)}% (Target: ${maxThreshold}%)`,
       `Suggestions: ${metrics.totalEvents}`,

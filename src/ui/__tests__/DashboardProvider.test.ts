@@ -183,7 +183,7 @@ describe('DashboardProvider', () => {
         {} as never
       );
 
-      expect(mockWebviewView.webview.html).toContain('CodePause Dashboard');
+      expect(mockWebviewView.webview.html).toContain('CodeVibe Dashboard');
       expect(mockWebviewView.webview.html).toContain('<!DOCTYPE html>');
     });
 

@@ -3,29 +3,33 @@
  * Orchestrates all components and manages extension lifecycle
  */
 
-import * as vscode from 'vscode';
-import { DatabaseManager } from './storage/DatabaseManager';
-import { DataRetentionManager } from './storage/DataRetentionManager';
-import { MetricsRepository } from './storage/MetricsRepository';
-import { ConfigRepository } from './storage/ConfigRepository';
-import { ConfigManager } from './config/ConfigManager';
-import { MetricsCollector } from './core/MetricsCollector';
-import { ThresholdManager } from './core/ThresholdManager';
-import { StatusBarManager } from './ui/StatusBarManager';
-import { NotificationService } from './ui/NotificationService';
-import { DashboardProvider } from './ui/DashboardProvider';
-import { OnboardingManager } from './onboarding/OnboardingManager';
-import { TelemetryService } from './telemetry/TelemetryService';
-import { ErrorReporter } from './errors/ErrorReporter';
-import { ProgressTracker } from './gamification/ProgressTracker';
-import { AchievementSystem } from './gamification/AchievementSystem';
-import { SnoozeManager } from './customization/SnoozeManager';
-import { DataExporter } from './customization/DataExporter';
-import { SettingsProvider } from './ui/SettingsProvider';
-import { AlertEngine } from './alerts/AlertEngine';
-import { BlindApprovalDetector } from './core/BlindApprovalDetector';
-import { EventType, DeveloperLevel } from './types';
-import { isGitRepository } from './utils/SecurityUtils';
+import * as vscode from "vscode";
+import { DatabaseManager } from "./storage/DatabaseManager";
+import { DataRetentionManager } from "./storage/DataRetentionManager";
+import { MetricsRepository } from "./storage/MetricsRepository";
+import { ConfigRepository } from "./storage/ConfigRepository";
+import { ConfigManager } from "./config/ConfigManager";
+import { MetricsCollector } from "./core/MetricsCollector";
+import { ThresholdManager } from "./core/ThresholdManager";
+import { StatusBarManager } from "./ui/StatusBarManager";
+import { NotificationService } from "./ui/NotificationService";
+import { DashboardProvider } from "./ui/DashboardProvider";
+import { OnboardingManager } from "./onboarding/OnboardingManager";
+import { TelemetryService } from "./telemetry/TelemetryService";
+import { ErrorReporter } from "./errors/ErrorReporter";
+import { ProgressTracker } from "./gamification/ProgressTracker";
+import { AchievementSystem } from "./gamification/AchievementSystem";
+import { SnoozeManager } from "./customization/SnoozeManager";
+import { DataExporter } from "./customization/DataExporter";
+import { SettingsProvider } from "./ui/SettingsProvider";
+import { AlertEngine } from "./alerts/AlertEngine";
+import { BlindApprovalDetector } from "./core/BlindApprovalDetector";
+import { AssignmentManager } from "./assignments/AssignmentManager";
+import { PolicyEngine } from "./assignments/PolicyEngine";
+import { AssignmentReportGenerator } from "./assignments/AssignmentReportGenerator";
+import { execSync } from "child_process";
+import { EventType, DeveloperLevel } from "./types";
+import { isGitRepository } from "./utils/SecurityUtils";
 
 // Extension state
 let databaseManager: DatabaseManager | null = null;
@@ -34,6 +38,8 @@ let metricsRepository: MetricsRepository | null = null;
 let configRepository: ConfigRepository | null = null;
 let configManager: ConfigManager | null = null;
 let metricsCollector: MetricsCollector | null = null;
+let assignmentManager: AssignmentManager | null = null;
+let policyEngine: PolicyEngine | null = null;
 let thresholdManager: ThresholdManager | null = null;
 let statusBarManager: StatusBarManager | null = null;
 let notificationService: NotificationService | null = null;
@@ -98,21 +104,23 @@ export async function activate(context: vscode.ExtensionContext) {
       }, 2000);
     } else {
       // Show activation message via notification service
-      notificationService?.showProgressNotification('CodePause is now tracking your AI usage');
+      notificationService?.showProgressNotification(
+        "CodeVibe is now tracking your AI usage",
+      );
     }
   } catch (error) {
-    console.error('Failed to activate CodePause:', error);
+    console.error("Failed to activate CodeVibe:", error);
 
     // Report activation error
     if (errorReporter && error instanceof Error) {
-      errorReporter.reportError(error, 'activation');
+      errorReporter.reportError(error, "activation");
     } else if (telemetryService) {
       // Fallback to telemetry if ErrorReporter not available
-      telemetryService.trackError('activation');
+      telemetryService.trackError("activation");
     }
 
     vscode.window.showErrorMessage(
-      `CodePause failed to activate: ${error instanceof Error ? error.message : 'Unknown error'}`
+      `CodeVibe failed to activate: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
   }
 }
@@ -192,6 +200,9 @@ export async function deactivate() {
     metricsCollector = null;
   }
 
+  assignmentManager = null;
+  policyEngine = null;
+
   // Stop data retention cleanup scheduler
   if (dataRetentionManager) {
     dataRetentionManager.stopCleanupScheduler();
@@ -218,11 +229,13 @@ export async function deactivate() {
  * Initialize storage layer
  * Now creates workspace-specific databases for project isolation
  */
-async function initializeStorage(_context: vscode.ExtensionContext): Promise<void> {
-  const os = require('os');
-  const path = require('path');
-  const fs = require('fs');
-  const storagePath = path.join(os.homedir(), '.codepause');
+async function initializeStorage(
+  _context: vscode.ExtensionContext,
+): Promise<void> {
+  const os = require("os");
+  const path = require("path");
+  const fs = require("fs");
+  const storagePath = path.join(os.homedir(), ".codepause");
 
   if (!fs.existsSync(storagePath)) {
     fs.mkdirSync(storagePath, { recursive: true });
@@ -241,18 +254,22 @@ async function initializeStorage(_context: vscode.ExtensionContext): Promise<voi
 
   metricsRepository = new MetricsRepository(databaseManager);
   // Pass globalState to ConfigRepository for user-level onboarding persistence
-  configRepository = new ConfigRepository(databaseManager, _context.globalState);
+  configRepository = new ConfigRepository(
+    databaseManager,
+    _context.globalState,
+  );
 
   configManager = new ConfigManager(configRepository);
   await configManager.initialize();
-
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 /**
  * Check if workspace is a git repository and show warning if not
  */
-async function checkGitRepository(_context: vscode.ExtensionContext): Promise<void> {
+async function checkGitRepository(
+  _context: vscode.ExtensionContext,
+): Promise<void> {
   const workspacePath = getWorkspacePath();
 
   if (!workspacePath) {
@@ -264,42 +281,55 @@ async function checkGitRepository(_context: vscode.ExtensionContext): Promise<vo
   if (!isGitRepo) {
     // Show warning that git repository is recommended
     const action = await vscode.window.showWarningMessage(
-      'CodePause works best with git repositories. AI detection accuracy may be reduced without git.',
-      'Initialize Git',
-      'Learn More',
-      'Dismiss'
+      "CodeVibe works best with git repositories. AI detection accuracy may be reduced without git.",
+      "Initialize Git",
+      "Learn More",
+      "Dismiss",
     );
 
-    if (action === 'Initialize Git') {
+    if (action === "Initialize Git") {
       // Open terminal and suggest git init command
-      const terminal = vscode.window.createTerminal('CodePause Git Setup');
+      const terminal = vscode.window.createTerminal("CodeVibe Git Setup");
       terminal.show();
-      terminal.sendText('# Initialize git repository for better AI tracking');
-      terminal.sendText('git init');
-      terminal.sendText('git add -A');
+      terminal.sendText("# Initialize git repository for better AI tracking");
+      terminal.sendText("git init");
+      terminal.sendText("git add -A");
       terminal.sendText('git commit -m "Initial commit"');
-    } else if (action === 'Learn More') {
+    } else if (action === "Learn More") {
       vscode.env.openExternal(
-        vscode.Uri.parse('https://github.com/codepause/codepause-extension#git-repository-requirement')
+        vscode.Uri.parse(
+          "https://github.com/codepause/codepause-extension#git-repository-requirement",
+        ),
       );
     }
   }
 }
 
-async function initializeTrackers(_context: vscode.ExtensionContext): Promise<void> {
+async function initializeTrackers(
+  _context: vscode.ExtensionContext,
+): Promise<void> {
   if (!metricsRepository || !configManager) {
-    throw new Error('Storage must be initialized before trackers');
+    throw new Error("Storage must be initialized before trackers");
   }
 
-  // Initialize metrics collector with telemetry service
-  metricsCollector = new MetricsCollector(metricsRepository, configManager, telemetryService ?? undefined);
-  await metricsCollector.initialize();
+  // Initialize assignment management before metrics collector so active assignment is loaded
+  assignmentManager = new AssignmentManager(metricsRepository);
+  policyEngine = new PolicyEngine();
 
+  // Initialize metrics collector with telemetry service and assignment management
+  metricsCollector = new MetricsCollector(
+    metricsRepository,
+    configManager,
+    telemetryService ?? undefined,
+    assignmentManager,
+    policyEngine,
+  );
+  await metricsCollector.initialize();
 }
 
 async function initializeUI(context: vscode.ExtensionContext): Promise<void> {
   if (!metricsRepository || !configRepository || !configManager) {
-    throw new Error('Storage must be initialized before UI');
+    throw new Error("Storage must be initialized before UI");
   }
 
   // Initialize threshold manager with user's experience level
@@ -313,7 +343,7 @@ async function initializeUI(context: vscode.ExtensionContext): Promise<void> {
   statusBarManager = new StatusBarManager(
     metricsRepository,
     configRepository,
-    thresholdManager
+    thresholdManager,
   );
   await statusBarManager.initialize();
 
@@ -324,25 +354,31 @@ async function initializeUI(context: vscode.ExtensionContext): Promise<void> {
     configRepository,
     thresholdManager,
     telemetryService ?? undefined, // Pass telemetry service for review event tracking
-    metricsCollector ?? undefined // Pass metrics collector to access FileReviewSessionTracker
+    metricsCollector ?? undefined, // Pass metrics collector to access FileReviewSessionTracker
   );
 
   // Register dashboard view
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       DashboardProvider.viewType,
-      dashboardProvider
-    )
+      dashboardProvider,
+    ),
   );
-
 }
 
 /**
  * Initialize alert system
  */
-async function initializeAlerts(context: vscode.ExtensionContext): Promise<void> {
-  if (!metricsRepository || !configRepository || !thresholdManager || !notificationService) {
-    throw new Error('Required components must be initialized before alerts');
+async function initializeAlerts(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  if (
+    !metricsRepository ||
+    !configRepository ||
+    !thresholdManager ||
+    !notificationService
+  ) {
+    throw new Error("Required components must be initialized before alerts");
   }
 
   // Initialize blind approval detector
@@ -357,14 +393,21 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
   if (metricsCollector) {
     metricsCollector.onEvent(async (event) => {
       // Only process suggestion accepted events
-      if (event.eventType !== EventType.SuggestionAccepted || !event.acceptanceTimeDelta) {
+      if (
+        event.eventType !== EventType.SuggestionAccepted ||
+        !event.acceptanceTimeDelta
+      ) {
         return;
       }
 
       // Skip alerts for scanner/historical events (files detected after creation)
       // These aren't real-time acceptances, so don't trigger blind approval alerts
       const metadata = event.metadata as any;
-      if (metadata?.scanner || metadata?.closedFileModification || metadata?.fileCreation) {
+      if (
+        metadata?.scanner ||
+        metadata?.closedFileModification ||
+        metadata?.fileCreation
+      ) {
         // These are historical events from the scanner, not real-time user actions
         return;
       }
@@ -373,9 +416,9 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
         // Real-time blind approval detection
         const detection = blindApprovalDetector!.detect(event);
 
-
         if (detection.isBlindApproval) {
-          const shouldShow = await alertEngine!.shouldShowBlindApprovalAlert(detection);
+          const shouldShow =
+            await alertEngine!.shouldShowBlindApprovalAlert(detection);
 
           if (shouldShow) {
             const alert = alertEngine!.createBlindApprovalAlert(detection);
@@ -384,7 +427,7 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
           }
         }
       } catch (error) {
-        console.error('[AlertSystem] Error in real-time alert check:', error);
+        console.error("[AlertSystem] Error in real-time alert check:", error);
       }
     });
 
@@ -398,24 +441,24 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
 
       try {
         // Map event types to XP gain descriptions
-        let action = '';
+        let action = "";
         let shouldShow = false;
 
         switch (event.eventType) {
           case EventType.SuggestionAccepted:
-            action = 'Reviewed AI suggestion';
+            action = "Reviewed AI suggestion";
             shouldShow = false; // Don't show for every acceptance (too frequent)
             break;
           case EventType.SuggestionRejected:
-            action = 'Rejected AI suggestion';
+            action = "Rejected AI suggestion";
             shouldShow = false;
             break;
           case EventType.CodeGenerated:
-            action = 'Generated code with AI';
+            action = "Generated code with AI";
             shouldShow = false;
             break;
           case EventType.SessionStart:
-            action = 'Started coding session';
+            action = "Started coding session";
             shouldShow = true; // Show for sessions
             break;
           default:
@@ -426,7 +469,7 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
           await notificationService.showXPGain(1, action, shouldShow);
         }
       } catch (error) {
-        console.error('[XPSystem] Error showing XP gain:', error);
+        console.error("[XPSystem] Error showing XP gain:", error);
       }
     });
 
@@ -453,7 +496,7 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
         return;
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString().split("T")[0];
       const metrics = await metricsRepository.getDailyMetrics(today);
 
       if (!metrics || metrics.totalEvents <= 10) {
@@ -464,14 +507,19 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
 
       // Check AI percentage threshold
       if (metrics.aiPercentage > currentThresholds.maxAIPercentage) {
-        const shouldShow = await alertEngine.shouldShowThresholdAlert(metrics, 'aiPercentage');
-        const isSnoozed = configRepository ? await configRepository.isSnoozed() : false;
+        const shouldShow = await alertEngine.shouldShowThresholdAlert(
+          metrics,
+          "aiPercentage",
+        );
+        const isSnoozed = configRepository
+          ? await configRepository.isSnoozed()
+          : false;
 
         if (shouldShow && !isSnoozed) {
           const alert = alertEngine.createThresholdAlert(
             metrics,
-            'aiPercentage',
-            currentThresholds.maxAIPercentage
+            "aiPercentage",
+            currentThresholds.maxAIPercentage,
           );
 
           if (alert) {
@@ -485,20 +533,25 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
       // Check for review reminders - unreviewed AI-generated files
       const unreviewedFiles = await metricsRepository.getUnreviewedFiles(today);
       if (unreviewedFiles && unreviewedFiles.length > 0) {
-        const totalLines = unreviewedFiles.reduce((sum, f) => sum + (f.linesGenerated || 0), 0);
-        const avgScore = unreviewedFiles.reduce((sum, f) => sum + (f.reviewScore || 0), 0) / unreviewedFiles.length;
+        const totalLines = unreviewedFiles.reduce(
+          (sum, f) => sum + (f.linesGenerated || 0),
+          0,
+        );
+        const avgScore =
+          unreviewedFiles.reduce((sum, f) => sum + (f.reviewScore || 0), 0) /
+          unreviewedFiles.length;
 
         const shouldShowReminder = await alertEngine.shouldShowReviewReminder(
           unreviewedFiles.length,
           totalLines,
-          avgScore
+          avgScore,
         );
 
         if (shouldShowReminder) {
           const alert = alertEngine.createReviewReminderAlert(
             unreviewedFiles.length,
             totalLines,
-            unreviewedFiles.map(f => f.filePath)
+            unreviewedFiles.map((f) => f.filePath),
           );
 
           if (alert) {
@@ -508,60 +561,65 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
         }
       }
     } catch (error) {
-      console.error('CodePause: Error in threshold check:', error);
+      console.error("CodeVibe: Error in threshold check:", error);
     }
   };
 
   // Periodic threshold check (once every 10 minutes for AI percentage warnings)
   let lastThresholdCheckTime = 0;
-  const thresholdCheckInterval = setInterval(() => {
-    checkThresholds(false);
-  }, 5 * 60 * 1000); // Check every 5 minutes, but only alert every 10 min
+  const thresholdCheckInterval = setInterval(
+    () => {
+      checkThresholds(false);
+    },
+    5 * 60 * 1000,
+  ); // Check every 5 minutes, but only alert every 10 min
 
   context.subscriptions.push({
-    dispose: () => clearInterval(thresholdCheckInterval)
+    dispose: () => clearInterval(thresholdCheckInterval),
   });
 
   // Manual threshold check command (for testing/debugging)
   const checkThresholdsNow = vscode.commands.registerCommand(
-    'codePause.checkThresholds',
+    "codePause.checkThresholds",
     async () => {
       await checkThresholds(true);
-      vscode.window.showInformationMessage('Threshold check completed. Check console for details.');
-    }
+      vscode.window.showInformationMessage(
+        "Threshold check completed. Check console for details.",
+      );
+    },
   );
   context.subscriptions.push(checkThresholdsNow);
 
   // Test notification command (for verifying notification visibility)
   const testNotification = vscode.commands.registerCommand(
-    'codePause.testNotification',
+    "codePause.testNotification",
     async () => {
       // Test 1: Modal notification
       await vscode.window.showInformationMessage(
-        'TEST NOTIFICATION (Modal)',
+        "TEST NOTIFICATION (Modal)",
         { modal: true },
-        'I see this!',
-        'Not visible'
+        "I see this!",
+        "Not visible",
       );
 
       // Test 2: Non-modal notification
       await vscode.window.showInformationMessage(
-        'TEST NOTIFICATION (Non-Modal) - This should appear in top-right corner or notification center',
+        "TEST NOTIFICATION (Non-Modal) - This should appear in top-right corner or notification center",
         { modal: false },
-        'I see this!',
-        'Not visible'
+        "I see this!",
+        "Not visible",
       );
 
       // Test 3: Warning message
       await vscode.window.showWarningMessage(
-        'TEST WARNING - Check if you can see this warning notification',
+        "TEST WARNING - Check if you can see this warning notification",
         { modal: false },
-        'Visible',
-        'Not visible'
+        "Visible",
+        "Not visible",
       );
 
-      vscode.window.showInformationMessage('Test complete!');
-    }
+      vscode.window.showInformationMessage("Test complete!");
+    },
   );
   context.subscriptions.push(testNotification);
 }
@@ -569,9 +627,11 @@ async function initializeAlerts(context: vscode.ExtensionContext): Promise<void>
 /**
  * Initialize gamification components
  */
-async function initializeGamification(context: vscode.ExtensionContext): Promise<void> {
+async function initializeGamification(
+  context: vscode.ExtensionContext,
+): Promise<void> {
   if (!metricsRepository || !configRepository) {
-    throw new Error('Storage must be initialized before gamification');
+    throw new Error("Storage must be initialized before gamification");
   }
 
   // Check if gamification is enabled
@@ -588,7 +648,7 @@ async function initializeGamification(context: vscode.ExtensionContext): Promise
   achievementSystem = new AchievementSystem(
     metricsRepository,
     configRepository,
-    progressTracker
+    progressTracker,
   );
   await achievementSystem.initialize();
 
@@ -603,13 +663,13 @@ async function initializeGamification(context: vscode.ExtensionContext): Promise
         await notificationService!.showAchievementProgress(
           achievement.title,
           achievement.progress || 0,
-          achievement.icon
+          achievement.icon,
         );
       } else {
         // Show unlock notification
         await notificationService!.showAchievementUnlocked(
           achievement.title,
-          achievement.description
+          achievement.description,
         );
       }
 
@@ -638,27 +698,34 @@ async function initializeGamification(context: vscode.ExtensionContext): Promise
 
   // Connect gamification with metrics collection
   // Set up periodic checks for achievements based on metrics
-  const gamificationCheckInterval = setInterval(async () => {
-    if (achievementSystem && progressTracker) {
-      // Update progression (adds XP from events)
-      await progressTracker.updateProgression();
+  const gamificationCheckInterval = setInterval(
+    async () => {
+      if (achievementSystem && progressTracker) {
+        // Update progression (adds XP from events)
+        await progressTracker.updateProgression();
 
-      // Check relevant achievements periodically
-      await achievementSystem.checkRelevantAchievements('daily');
-    }
-  }, 5 * 60 * 1000); // Check every 5 minutes
+        // Check relevant achievements periodically
+        await achievementSystem.checkRelevantAchievements("daily");
+      }
+    },
+    5 * 60 * 1000,
+  ); // Check every 5 minutes
 
   context.subscriptions.push({
-    dispose: () => clearInterval(gamificationCheckInterval)
+    dispose: () => clearInterval(gamificationCheckInterval),
   });
 }
 
 /**
  * Initialize customization components
  */
-async function initializeCustomization(context: vscode.ExtensionContext): Promise<void> {
+async function initializeCustomization(
+  context: vscode.ExtensionContext,
+): Promise<void> {
   if (!metricsRepository || !configRepository || !thresholdManager) {
-    throw new Error('Required components must be initialized before customization');
+    throw new Error(
+      "Required components must be initialized before customization",
+    );
   }
 
   // Initialize snooze manager
@@ -672,7 +739,7 @@ async function initializeCustomization(context: vscode.ExtensionContext): Promis
   settingsProvider = new SettingsProvider(
     context.extensionUri,
     configRepository,
-    thresholdManager
+    thresholdManager,
   );
 
   // Connect snooze manager to status bar
@@ -689,98 +756,103 @@ async function initializeCustomization(context: vscode.ExtensionContext): Promis
 function registerCommands(context: vscode.ExtensionContext): void {
   // Open Dashboard command
   const openDashboard = vscode.commands.registerCommand(
-    'codePause.openDashboard',
+    "codePause.openDashboard",
     async () => {
-      telemetryService?.trackCommand('openDashboard');
+      telemetryService?.trackCommand("openDashboard");
 
       if (dashboardProvider) {
         // Reveal the view in the sidebar (this will open the sidebar if closed)
         // Using 'workbench.view.extension.codePause' to reveal the entire view container
-        await vscode.commands.executeCommand('workbench.view.extension.codePause');
+        await vscode.commands.executeCommand(
+          "workbench.view.extension.codePause",
+        );
 
         // Then focus the dashboard view specifically
-        await vscode.commands.executeCommand('codePause.dashboardView.focus');
+        await vscode.commands.executeCommand("codePause.dashboardView.focus");
 
         // Refresh the dashboard content
         await dashboardProvider.refresh();
       } else {
-        vscode.window.showErrorMessage('Dashboard not available');
+        vscode.window.showErrorMessage("Dashboard not available");
       }
-    }
+    },
   );
 
   // Start Onboarding command
   const startOnboarding = vscode.commands.registerCommand(
-    'codePause.startOnboarding',
+    "codePause.startOnboarding",
     async () => {
-      telemetryService?.trackCommand('startOnboarding');
+      telemetryService?.trackCommand("startOnboarding");
 
       if (onboardingManager) {
         await onboardingManager.start();
       } else {
-        vscode.window.showErrorMessage('Onboarding not available');
+        vscode.window.showErrorMessage("Onboarding not available");
       }
-    }
+    },
   );
 
   // Reset Onboarding command (for testing)
   const resetOnboarding = vscode.commands.registerCommand(
-    'codePause.resetOnboarding',
+    "codePause.resetOnboarding",
     async () => {
       if (onboardingManager) {
         await onboardingManager.reset();
-        vscode.window.showInformationMessage(
-          'Onboarding reset successfully. Reload VS Code to restart onboarding.',
-          'Reload Now'
-        ).then(action => {
-          if (action === 'Reload Now') {
-            vscode.commands.executeCommand('workbench.action.reloadWindow');
-          }
-        });
+        vscode.window
+          .showInformationMessage(
+            "Onboarding reset successfully. Reload VS Code to restart onboarding.",
+            "Reload Now",
+          )
+          .then((action) => {
+            if (action === "Reload Now") {
+              vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+          });
       } else {
-        vscode.window.showErrorMessage('Onboarding not available');
+        vscode.window.showErrorMessage("Onboarding not available");
       }
-    }
+    },
   );
 
   // Open Settings command
   const openSettings = vscode.commands.registerCommand(
-    'codePause.openSettings',
+    "codePause.openSettings",
     async () => {
       await vscode.commands.executeCommand(
-        'workbench.action.openSettings',
-        'codePause'
+        "workbench.action.openSettings",
+        "codePause",
       );
-    }
+    },
   );
 
   // Snooze command (updated to use SnoozeManager)
   const snooze = vscode.commands.registerCommand(
-    'codePause.snooze',
+    "codePause.snooze",
     async () => {
       if (!snoozeManager) {
-        vscode.window.showErrorMessage('CodePause is not initialized');
+        vscode.window.showErrorMessage("CodeVibe is not initialized");
         return;
       }
 
       await snoozeManager.showSnoozeDialog();
-    }
+    },
   );
 
   // Show stats command (for testing)
   const showDatabaseInfo = vscode.commands.registerCommand(
-    'codePause.showDatabaseInfo',
+    "codePause.showDatabaseInfo",
     async () => {
       if (!databaseManager) {
-        vscode.window.showInformationMessage('Database not initialized');
+        vscode.window.showInformationMessage("Database not initialized");
         return;
       }
 
       // Get database stats to verify it's working
-      let statsInfo = '';
+      let statsInfo = "";
       try {
         const stats = await databaseManager.getStats();
-        statsInfo = `\n\nDatabase Stats:\n` +
+        statsInfo =
+          `\n\nDatabase Stats:\n` +
           `• Total Events: ${stats.totalEvents}\n` +
           `• Total Sessions: ${stats.totalSessions}\n` +
           `• Database Size: ${(stats.databaseSize / 1024).toFixed(2)} KB\n` +
@@ -789,7 +861,8 @@ function registerCommands(context: vscode.ExtensionContext): void {
         statsInfo = `\n\n⚠️ Could not read database stats: ${error}`;
       }
 
-      const message = `Database Backend: node-sqlite3-wasm\n\n` +
+      const message =
+        `Database Backend: node-sqlite3-wasm\n\n` +
         `Status: ✅ Active\n\n` +
         `✅ Using node-sqlite3-wasm (WebAssembly SQLite)\n` +
         `• Cross-platform compatibility: Works on all Node.js versions (20+)\n` +
@@ -803,47 +876,54 @@ function registerCommands(context: vscode.ExtensionContext): void {
         statsInfo;
 
       vscode.window.showInformationMessage(message, { modal: true });
-    }
+    },
   );
 
   // Manual data cleanup command (for testing 30-day retention)
   const cleanupOldData = vscode.commands.registerCommand(
-    'codePause.cleanupOldData',
+    "codePause.cleanupOldData",
     async () => {
       if (!dataRetentionManager) {
-        vscode.window.showErrorMessage('Data retention manager not initialized');
+        vscode.window.showErrorMessage(
+          "Data retention manager not initialized",
+        );
         return;
       }
 
       await dataRetentionManager.triggerManualCleanup();
-    }
+    },
   );
 
   const showStats = vscode.commands.registerCommand(
-    'codePause.showStats',
+    "codePause.showStats",
     async () => {
       if (!metricsRepository) {
-        vscode.window.showErrorMessage('CodePause is not initialized');
+        vscode.window.showErrorMessage("CodeVibe is not initialized");
         return;
       }
 
       const stats = await metricsRepository.getStatsSummary();
 
       vscode.window.showInformationMessage(
-        `CodePause Stats:\n` +
-        `Total Events: ${stats.totalEvents}\n` +
-        `Total Sessions: ${stats.totalSessions}\n` +
-        `Database Size: ${(stats.databaseSize / 1024).toFixed(2)} KB`
+        `CodeVibe Stats:\n` +
+          `Total Events: ${stats.totalEvents}\n` +
+          `Total Sessions: ${stats.totalSessions}\n` +
+          `Database Size: ${(stats.databaseSize / 1024).toFixed(2)} KB`,
       );
-    }
+    },
   );
 
   // Diagnostic command to check alert system status
   const diagnoseAlerts = vscode.commands.registerCommand(
-    'codePause.diagnoseAlerts',
+    "codePause.diagnoseAlerts",
     async () => {
-      if (!alertEngine || !configRepository || !snoozeManager || !blindApprovalDetector) {
-        vscode.window.showErrorMessage('Alert system not initialized');
+      if (
+        !alertEngine ||
+        !configRepository ||
+        !snoozeManager ||
+        !blindApprovalDetector
+      ) {
+        vscode.window.showErrorMessage("Alert system not initialized");
         return;
       }
 
@@ -854,39 +934,44 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
         // Check rate limits for each alert type
         const alertTypes = [
-          { type: 'GentleNudge', limit: 5 * 60 * 1000 },
-          { type: 'EducationalMoment', limit: 30 * 60 * 1000 },
-          { type: 'StreakWarning', limit: 10 * 60 * 1000 }
+          { type: "GentleNudge", limit: 5 * 60 * 1000 },
+          { type: "EducationalMoment", limit: 30 * 60 * 1000 },
+          { type: "StreakWarning", limit: 10 * 60 * 1000 },
         ];
 
         const rateLimitStatus = await Promise.all(
           alertTypes.map(async ({ type, limit }) => {
-            const history = await configRepository!.getAlertHistory(type as any);
+            const history = await configRepository!.getAlertHistory(
+              type as any,
+            );
             if (!history) {
               return `${type}: ✅ Can show (never shown)`;
             }
             const timeSince = Date.now() - history.lastShown;
             const canShow = timeSince >= limit;
             const minutesAgo = Math.floor(timeSince / 60000);
-            return `${type}: ${canShow ? '✅' : '⏸️'} ${canShow ? 'Can show' : `Rate limited (${minutesAgo}m ago, need ${Math.floor(limit / 60000)}m)`}`;
-          })
+            return `${type}: ${canShow ? "✅" : "⏸️"} ${canShow ? "Can show" : `Rate limited (${minutesAgo}m ago, need ${Math.floor(limit / 60000)}m)`}`;
+          }),
         );
 
         // Get blind approval detector stats
         const detectorStats = blindApprovalDetector.getStats();
 
         // Get today's metrics
-        const today = new Date().toISOString().split('T')[0];
-        const metrics = metricsRepository ? await metricsRepository.getDailyMetrics(today) : null;
+        const today = new Date().toISOString().split("T")[0];
+        const metrics = metricsRepository
+          ? await metricsRepository.getDailyMetrics(today)
+          : null;
 
-        const message = `🔍 Alert System Diagnostics\n\n` +
+        const message =
+          `🔍 Alert System Diagnostics\n\n` +
           `📊 Snooze Status:\n` +
-          `   ${isSnoozed ? '⏸️ SNOOZED' : '✅ Active'}\n` +
+          `   ${isSnoozed ? "⏸️ SNOOZED" : "✅ Active"}\n` +
           (isSnoozed && snoozeState.snoozeUntil
             ? `   Until: ${new Date(snoozeState.snoozeUntil).toLocaleString()}\n`
-            : '') +
+            : "") +
           `\n⏱️ Rate Limits:\n` +
-          rateLimitStatus.map(s => `   ${s}`).join('\n') +
+          rateLimitStatus.map((s) => `   ${s}`).join("\n") +
           `\n\n🎯 Blind Approval Detection:\n` +
           `   Recent Acceptances: ${detectorStats.recentCount}\n` +
           `   Rapid Acceptances: ${detectorStats.recentRapidCount}\n` +
@@ -894,25 +979,29 @@ function registerCommands(context: vscode.ExtensionContext): void {
           `\n📈 Today's Metrics:\n` +
           (metrics
             ? `   AI Percentage: ${metrics.aiPercentage.toFixed(1)}%\n` +
-            `   Avg Review Time: ${metrics.averageReviewTime.toFixed(0)}ms\n` +
-            `   Total Events: ${metrics.totalEvents}\n` +
-            `   Manual Lines: ${metrics.totalManualLines}`
-            : '   No metrics yet') +
+              `   Avg Review Time: ${metrics.averageReviewTime.toFixed(0)}ms\n` +
+              `   Total Events: ${metrics.totalEvents}\n` +
+              `   Manual Lines: ${metrics.totalManualLines}`
+            : "   No metrics yet") +
           `\n\n💡 Issues Found:\n` +
-          (isSnoozed ? '   ⚠️ Alerts are snoozed - no alerts will show\n' : '') +
-          (metrics && metrics.aiPercentage > 60 ? '   ⚠️ AI usage exceeds 60% threshold\n' : '') +
-          (detectorStats.recentRapidCount >= 3 ? '   ⚠️ Pattern detected (3+ rapid accepts)\n' : '');
+          (isSnoozed ? "   ⚠️ Alerts are snoozed - no alerts will show\n" : "") +
+          (metrics && metrics.aiPercentage > 60
+            ? "   ⚠️ AI usage exceeds 60% threshold\n"
+            : "") +
+          (detectorStats.recentRapidCount >= 3
+            ? "   ⚠️ Pattern detected (3+ rapid accepts)\n"
+            : "");
 
         vscode.window.showInformationMessage(message, { modal: true });
       } catch (error) {
         vscode.window.showErrorMessage(`Diagnostic error: ${error}`);
       }
-    }
+    },
   );
 
   // Refresh dashboard command
   const refreshDashboard = vscode.commands.registerCommand(
-    'codePause.refreshDashboard',
+    "codePause.refreshDashboard",
     async () => {
       // Force immediate metrics aggregation
       if (metricsCollector) {
@@ -932,115 +1021,429 @@ function registerCommands(context: vscode.ExtensionContext): void {
         await achievementSystem.triggerCheck();
       }
 
-      vscode.window.showInformationMessage('Dashboard refreshed (HTML regenerated)');
-    }
+      vscode.window.showInformationMessage(
+        "Dashboard refreshed (HTML regenerated)",
+      );
+    },
   );
 
   // Show progression command
   const showProgression = vscode.commands.registerCommand(
-    'codePause.showProgression',
+    "codePause.showProgression",
     async () => {
       if (!progressTracker) {
-        vscode.window.showErrorMessage('Gamification is not enabled');
+        vscode.window.showErrorMessage("Gamification is not enabled");
         return;
       }
 
       const summary = await progressTracker.getProgressionSummary();
       const quote = await progressTracker.getMotivationalQuote();
 
-      vscode.window.showInformationMessage(
-        `${summary}\n\n💭 "${quote}"`
+      vscode.window.showInformationMessage(`${summary}\n\n💭 "${quote}"`);
+    },
+  );
+
+  // Assignment commands
+  const createAssignment = vscode.commands.registerCommand(
+    "codePause.createAssignment",
+    async () => {
+      if (!assignmentManager || !metricsCollector) {
+        vscode.window.showErrorMessage("Assignment manager not initialized");
+        return;
+      }
+
+      const name = await vscode.window.showInputBox({
+        prompt: "Assignment name",
+        placeHolder: "e.g. Homework 3 - Binary Search Trees",
+      });
+
+      if (!name) {
+        return;
+      }
+
+      const startDate = await vscode.window.showInputBox({
+        prompt: "Start date (YYYY-MM-DD)",
+        value: new Date().toISOString().split("T")[0],
+      });
+
+      if (!startDate) {
+        return;
+      }
+
+      const endDate = await vscode.window.showInputBox({
+        prompt: "End date (YYYY-MM-DD)",
+        value: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0],
+      });
+
+      if (!endDate) {
+        return;
+      }
+
+      const repoUrl = await vscode.window.showInputBox({
+        prompt: "Student git repository URL (optional)",
+        placeHolder: "https://github.com/student/repo",
+      });
+
+      const maxAuthorship = await vscode.window.showInputBox({
+        prompt: "Maximum allowed AI authorship %",
+        value: "30",
+      });
+
+      const minOwnership = await vscode.window.showInputBox({
+        prompt: "Minimum ownership/review score (0-100)",
+        value: "40",
+      });
+
+      try {
+        const assignment = await assignmentManager.createAssignment({
+          name,
+          startDate,
+          endDate,
+          repoUrl: repoUrl || undefined,
+          policy: {
+            maxAuthorshipPercentage: parseInt(maxAuthorship || "30", 10),
+            minOwnershipScore: parseInt(minOwnership || "40", 10),
+          },
+        });
+
+        await assignmentManager.activateAssignment(assignment.id);
+        await metricsCollector.refreshActiveAssignment();
+
+        vscode.window
+          .showInformationMessage(
+            `Assignment "${assignment.name}" created and activated.`,
+            "Open Dashboard",
+          )
+          .then((action) => {
+            if (action === "Open Dashboard") {
+              vscode.commands.executeCommand("codePause.openDashboard");
+            }
+          });
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Failed to create assignment: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    },
+  );
+
+  const activateAssignment = vscode.commands.registerCommand(
+    "codePause.activateAssignment",
+    async () => {
+      if (!assignmentManager || !metricsCollector) {
+        vscode.window.showErrorMessage("Assignment manager not initialized");
+        return;
+      }
+
+      const assignments = await assignmentManager.listAssignments();
+      if (assignments.length === 0) {
+        vscode.window.showInformationMessage(
+          "No assignments found. Create one first.",
+        );
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        assignments.map((a) => ({
+          label: a.name,
+          description: `${a.startDate} → ${a.endDate}`,
+          value: a.id,
+        })),
+        { placeHolder: "Select assignment to activate" },
       );
-    }
+
+      if (selected) {
+        await assignmentManager.activateAssignment(selected.value);
+        await metricsCollector.refreshActiveAssignment();
+        vscode.window.showInformationMessage(
+          `Activated assignment: ${selected.label}`,
+        );
+      }
+    },
+  );
+
+  const deactivateAssignment = vscode.commands.registerCommand(
+    "codePause.deactivateAssignment",
+    async () => {
+      if (!assignmentManager || !metricsCollector) {
+        vscode.window.showErrorMessage("Assignment manager not initialized");
+        return;
+      }
+
+      await assignmentManager.deactivateAssignment();
+      await metricsCollector.refreshActiveAssignment();
+      vscode.window.showInformationMessage("Assignment tracking deactivated");
+    },
+  );
+
+  const showAssignmentStatus = vscode.commands.registerCommand(
+    "codePause.showAssignmentStatus",
+    async () => {
+      if (!assignmentManager || !metricsCollector || !metricsRepository) {
+        vscode.window.showErrorMessage("Assignment manager not initialized");
+        return;
+      }
+
+      const active = await assignmentManager.getActiveAssignment();
+      if (!active) {
+        vscode.window.showInformationMessage(
+          "No active assignment. Create or activate one first.",
+        );
+        return;
+      }
+
+      const events = await metricsRepository.getEventsForAssignment(active);
+      const fileReviews = await metricsRepository.getFileReviewsForDateRange(
+        active.startDate,
+        active.endDate,
+      );
+      const metrics = policyEngine!.computeMetrics(active, events, fileReviews);
+
+      const violationSummary =
+        metrics.violations.length === 0
+          ? "No policy violations detected ✅"
+          : metrics.violations
+              .map((v) => `• ${v.message} (${v.severity})`)
+              .join("\n");
+
+      const message =
+        `📚 Assignment: ${active.name}\n\n` +
+        `Authorship: ${metrics.authorship.authorshipPercentage.toFixed(1)}% AI ` +
+        `(limit: ${active.policy.maxAuthorshipPercentage}%)\n` +
+        `Ownership: ${metrics.ownership.score.toFixed(1)}/100 ` +
+        `(minimum: ${active.policy.minOwnershipScore})\n` +
+        `Files needing review: ${metrics.ownership.filesUnreviewed}\n\n` +
+        `Violations:\n${violationSummary}`;
+
+      vscode.window.showInformationMessage(message, { modal: true });
+    },
+  );
+
+  const exportAssignmentReport = vscode.commands.registerCommand(
+    "codePause.exportAssignmentReport",
+    async () => {
+      if (
+        !assignmentManager ||
+        !metricsCollector ||
+        !metricsRepository ||
+        !policyEngine
+      ) {
+        vscode.window.showErrorMessage("Assignment manager not initialized");
+        return;
+      }
+
+      // Prefer the active assignment; otherwise let the student pick one.
+      let assignment = await assignmentManager.getActiveAssignment();
+      if (!assignment) {
+        const all = await assignmentManager.listAssignments();
+        if (all.length === 0) {
+          vscode.window.showInformationMessage(
+            "No assignments found. Create one first.",
+          );
+          return;
+        }
+        const selected = await vscode.window.showQuickPick(
+          all.map((a) => ({
+            label: a.name,
+            description: `${a.startDate} → ${a.endDate}`,
+            value: a.id,
+          })),
+          { placeHolder: "Select assignment to export" },
+        );
+        if (!selected) {
+          return;
+        }
+        assignment = all.find((a) => a.id === selected.value) ?? null;
+        if (!assignment) {
+          return;
+        }
+      }
+
+      const studentIdentifier = await vscode.window.showInputBox({
+        prompt: "Your student identifier (optional) - embedded in the report",
+        placeHolder: "e.g. student ID or email",
+      });
+      if (studentIdentifier === undefined) {
+        return;
+      } // cancelled
+
+      // Best effort: record the current git HEAD of the workspace
+      let repoHeadCommit: string | undefined;
+      try {
+        const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (folder) {
+          repoHeadCommit = execSync("git rev-parse HEAD", {
+            cwd: folder,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "ignore"],
+          }).trim();
+        }
+      } catch {
+        // Not a git repository or git unavailable - report is still valid
+      }
+
+      const events = await metricsRepository.getEventsForAssignment(assignment);
+      const fileReviews = await metricsRepository.getFileReviewsForDateRange(
+        assignment.startDate,
+        assignment.endDate,
+      );
+      const metrics = policyEngine.computeMetrics(
+        assignment,
+        events,
+        fileReviews,
+      );
+
+      const report = new AssignmentReportGenerator().generate(
+        assignment,
+        metrics,
+        {
+          studentIdentifier: studentIdentifier.trim() || undefined,
+          repoUrl: assignment.repoUrl,
+          repoHeadCommit,
+        },
+      );
+
+      const safeName =
+        assignment.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "assignment";
+      const defaultUri = vscode.workspace.workspaceFolders?.[0]
+        ? vscode.Uri.joinPath(
+            vscode.workspace.workspaceFolders[0].uri,
+            `${safeName}.report.json`,
+          )
+        : undefined;
+
+      const target = await vscode.window.showSaveDialog({
+        defaultUri,
+        filters: { JSON: ["json"] },
+        saveLabel: "Export Report",
+      });
+      if (!target) {
+        return;
+      }
+
+      await vscode.workspace.fs.writeFile(
+        target,
+        Buffer.from(JSON.stringify(report, null, 2), "utf8"),
+      );
+
+      const shortHash = report.integrity.hash.slice(0, 12);
+      vscode.window
+        .showInformationMessage(
+          `Assignment report exported (integrity: ${shortHash}…). Submit this file with your assignment.`,
+          "Show File",
+        )
+        .then((action) => {
+          if (action === "Show File") {
+            vscode.commands.executeCommand("revealFileInOS", target);
+          }
+        });
+    },
   );
 
   // Show achievements command
   const showAchievements = vscode.commands.registerCommand(
-    'codePause.showAchievements',
+    "codePause.showAchievements",
     async () => {
       if (!achievementSystem) {
-        vscode.window.showErrorMessage('Gamification is not enabled');
+        vscode.window.showErrorMessage("Gamification is not enabled");
         return;
       }
 
       const summary = await achievementSystem.getAchievementsSummary();
 
       vscode.window.showInformationMessage(summary);
-    }
+    },
   );
 
   // Show advanced settings command
   const showAdvancedSettings = vscode.commands.registerCommand(
-    'codePause.showAdvancedSettings',
+    "codePause.showAdvancedSettings",
     async () => {
       if (!settingsProvider) {
-        vscode.window.showErrorMessage('Settings not available');
+        vscode.window.showErrorMessage("Settings not available");
         return;
       }
 
       await settingsProvider.show();
-    }
+    },
   );
 
   // Export data command
   const exportData = vscode.commands.registerCommand(
-    'codePause.exportData',
+    "codePause.exportData",
     async () => {
       if (!dataExporter) {
-        vscode.window.showErrorMessage('Data exporter not available');
+        vscode.window.showErrorMessage("Data exporter not available");
         return;
       }
 
       await dataExporter.showExportDialog();
-    }
+    },
   );
 
   // Import data command
   const importData = vscode.commands.registerCommand(
-    'codePause.importData',
+    "codePause.importData",
     async () => {
       if (!dataExporter) {
-        vscode.window.showErrorMessage('Data importer not available');
+        vscode.window.showErrorMessage("Data importer not available");
         return;
       }
 
       await dataExporter.importData();
-    }
+    },
   );
 
   // Show snooze status command
   const showSnoozeStatus = vscode.commands.registerCommand(
-    'codePause.showSnoozeStatus',
+    "codePause.showSnoozeStatus",
     async () => {
       if (!snoozeManager) {
-        vscode.window.showErrorMessage('Snooze manager not available');
+        vscode.window.showErrorMessage("Snooze manager not available");
         return;
       }
 
       const status = await snoozeManager.getSnoozeStatus();
       vscode.window.showInformationMessage(status);
-    }
+    },
   );
 
   // Change experience level command
   const changeExperienceLevel = vscode.commands.registerCommand(
-    'codePause.changeExperienceLevel',
+    "codePause.changeExperienceLevel",
     async () => {
       if (!configRepository) {
-        vscode.window.showErrorMessage('CodePause is not initialized');
+        vscode.window.showErrorMessage("CodeVibe is not initialized");
         return;
       }
 
       const currentConfig = await configRepository.getUserConfig();
       const options = [
-        { label: 'Junior Developer', description: 'AI usage limit: 40% (build fundamentals first)', value: DeveloperLevel.Junior },
-        { label: 'Mid-Level Developer', description: 'AI usage limit: 60% (have fundamentals, leverage AI)', value: DeveloperLevel.Mid },
-        { label: 'Senior Developer', description: 'AI usage limit: 70% (productivity-focused)', value: DeveloperLevel.Senior }
+        {
+          label: "Junior Developer",
+          description: "AI usage limit: 40% (build fundamentals first)",
+          value: DeveloperLevel.Junior,
+        },
+        {
+          label: "Mid-Level Developer",
+          description: "AI usage limit: 60% (have fundamentals, leverage AI)",
+          value: DeveloperLevel.Mid,
+        },
+        {
+          label: "Senior Developer",
+          description: "AI usage limit: 70% (productivity-focused)",
+          value: DeveloperLevel.Senior,
+        },
       ];
 
       const selected = await vscode.window.showQuickPick(options, {
         placeHolder: `Current level: ${currentConfig.experienceLevel}`,
-        title: 'Select Your Experience Level'
+        title: "Select Your Experience Level",
       });
 
       if (selected) {
@@ -1059,31 +1462,35 @@ function registerCommands(context: vscode.ExtensionContext): void {
           await statusBarManager.refresh();
         }
 
-        vscode.window.showInformationMessage(`Experience level changed to: ${selected.label}`);
+        vscode.window.showInformationMessage(
+          `Experience level changed to: ${selected.label}`,
+        );
       }
-    }
+    },
   );
 
   // Force full scan command (for debugging/recovery)
   const forceFullScan = vscode.commands.registerCommand(
-    'codePause.forceFullScan',
+    "codePause.forceFullScan",
     async () => {
       if (!metricsCollector) {
-        vscode.window.showErrorMessage('CodePause is not initialized');
+        vscode.window.showErrorMessage("CodeVibe is not initialized");
         return;
       }
 
-      vscode.window.showInformationMessage('Scanning workspace for AI-generated files...');
+      vscode.window.showInformationMessage(
+        "Scanning workspace for AI-generated files...",
+      );
 
       // Trigger scan on Cursor tracker
       const trackers = (metricsCollector as any).trackers;
-      const cursorTracker = trackers?.get('cursor');
+      const cursorTracker = trackers?.get("cursor");
 
-      if (cursorTracker && typeof cursorTracker.forceFullScan === 'function') {
+      if (cursorTracker && typeof cursorTracker.forceFullScan === "function") {
         await cursorTracker.forceFullScan();
 
         // Wait a moment for events to be processed
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // Trigger aggregation
         await metricsCollector.triggerAggregation();
@@ -1096,50 +1503,58 @@ function registerCommands(context: vscode.ExtensionContext): void {
           await statusBarManager.refresh();
         }
 
-        vscode.window.showInformationMessage('Scan complete! Dashboard updated.');
+        vscode.window.showInformationMessage(
+          "Scan complete! Dashboard updated.",
+        );
       } else {
-        vscode.window.showWarningMessage('Cursor tracker not available');
+        vscode.window.showWarningMessage("Cursor tracker not available");
       }
-    }
+    },
   );
 
   const resetAchievements = vscode.commands.registerCommand(
-    'codePause.resetAchievements',
+    "codePause.resetAchievements",
     async () => {
       const result = await vscode.window.showWarningMessage(
-        'This will reset all achievements and progress. Are you sure?',
+        "This will reset all achievements and progress. Are you sure?",
         { modal: true },
-        'Yes, Reset'
+        "Yes, Reset",
       );
 
-      if (result === 'Yes, Reset' && achievementSystem && configRepository) {
+      if (result === "Yes, Reset" && achievementSystem && configRepository) {
         const achievements = await configRepository.getAllAchievements();
         for (const achievement of achievements) {
-          await configRepository.updateAchievementProgress(achievement.id, 0, false);
+          await configRepository.updateAchievementProgress(
+            achievement.id,
+            0,
+            false,
+          );
         }
 
         if (dashboardProvider) {
           await dashboardProvider.refresh();
         }
 
-        vscode.window.showInformationMessage('All achievements have been reset');
+        vscode.window.showInformationMessage(
+          "All achievements have been reset",
+        );
       }
-    }
+    },
   );
 
   const clearAllData = vscode.commands.registerCommand(
-    'codePause.clearAllData',
+    "codePause.clearAllData",
     async () => {
       const result = await vscode.window.showWarningMessage(
-        'This will delete ALL tracked data, including events, metrics, and achievements. This cannot be undone. Are you sure?',
+        "This will delete ALL tracked data, including events, metrics, and achievements. This cannot be undone. Are you sure?",
         { modal: true },
-        'Yes, Clear Everything'
+        "Yes, Clear Everything",
       );
 
-      if (result === 'Yes, Clear Everything' && databaseManager) {
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
+      if (result === "Yes, Clear Everything" && databaseManager) {
+        const fs = require("fs");
+        const path = require("path");
+        const os = require("os");
 
         // Get the actual database path from the database manager
         const dbPath = (databaseManager as any).dbPath;
@@ -1153,13 +1568,13 @@ function registerCommands(context: vscode.ExtensionContext): void {
         }
 
         // Also clean up old database location if it exists
-        const oldDbPath = path.join(os.homedir(), '.codepause', 'codepause.db');
+        const oldDbPath = path.join(os.homedir(), ".codepause", "codepause.db");
         if (fs.existsSync(oldDbPath)) {
           fs.unlinkSync(oldDbPath);
         }
 
         // Clean up global.db if it exists
-        const globalDbPath = path.join(os.homedir(), '.codepause', 'global.db');
+        const globalDbPath = path.join(os.homedir(), ".codepause", "global.db");
         if (fs.existsSync(globalDbPath)) {
           fs.unlinkSync(globalDbPath);
         }
@@ -1170,24 +1585,31 @@ function registerCommands(context: vscode.ExtensionContext): void {
         //   1. Open files → current line count
         //   2. Git projects → git HEAD
         //   3. Closed files (no git) → treated as new file (correct behavior)
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        const workspaceFolder =
+          vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (workspaceFolder) {
-          const baselinesPath = path.join(workspaceFolder, '.vscode', 'codepause-baselines.json');
+          const baselinesPath = path.join(
+            workspaceFolder,
+            ".vscode",
+            "codepause-baselines.json",
+          );
           if (fs.existsSync(baselinesPath)) {
             fs.unlinkSync(baselinesPath);
           }
         }
 
-        vscode.window.showInformationMessage(
-          'All data cleared. Please reload the window to reinitialize.',
-          'Reload Window'
-        ).then(selection => {
-          if (selection === 'Reload Window') {
-            vscode.commands.executeCommand('workbench.action.reloadWindow');
-          }
-        });
+        vscode.window
+          .showInformationMessage(
+            "All data cleared. Please reload the window to reinitialize.",
+            "Reload Window",
+          )
+          .then((selection) => {
+            if (selection === "Reload Window") {
+              vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+          });
       }
-    }
+    },
   );
 
   // Register all commands
@@ -1211,7 +1633,12 @@ function registerCommands(context: vscode.ExtensionContext): void {
     changeExperienceLevel,
     forceFullScan,
     resetAchievements,
-    clearAllData
+    clearAllData,
+    createAssignment,
+    activateAssignment,
+    deactivateAssignment,
+    showAssignmentStatus,
+    exportAssignmentReport,
   );
 }
 
@@ -1224,6 +1651,10 @@ export function getMetricsRepository(): MetricsRepository | null {
   return metricsRepository;
 }
 
-export function getConfigManager(): ConfigManager | null {
-  return configManager;
+export function getAssignmentManager(): AssignmentManager | null {
+  return assignmentManager;
+}
+
+export function getPolicyEngine(): PolicyEngine | null {
+  return policyEngine;
 }

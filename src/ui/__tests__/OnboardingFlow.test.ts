@@ -195,7 +195,7 @@ describe('OnboardingFlow', () => {
       });
 
       expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-        expect.stringContaining('CodePause is ready')
+        expect.stringContaining('CodeVibe is ready')
       );
     });
 
@@ -317,8 +317,8 @@ describe('OnboardingFlow', () => {
       await onboardingFlow.start(mockContext);
 
       expect(capturedHtml).toContain('<!DOCTYPE html>');
-      expect(capturedHtml).toContain('CodePause Setup');
-      expect(capturedHtml).toContain('Welcome to CodePause');
+      expect(capturedHtml).toContain('CodeVibe Setup');
+      expect(capturedHtml).toContain('Welcome to CodeVibe');
     });
 
     it('should include privacy message', async () => {

@@ -33,7 +33,7 @@ export class OnboardingFlow {
     // Create webview panel
     this.panel = vscode.window.createWebviewPanel(
       'codePauseOnboarding',
-      'CodePause Setup',
+      'CodeVibe Setup',
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -90,7 +90,7 @@ export class OnboardingFlow {
 
       // Show brief success message
       vscode.window.showInformationMessage(
-        'CodePause is ready! Start coding and we\'ll help you maintain balanced AI usage.'
+        'CodeVibe is ready! Start coding and we\'ll help you maintain balanced AI usage.'
       );
 
       // Automatically open dashboard
@@ -107,7 +107,7 @@ export class OnboardingFlow {
       await this.configRepository.completeOnboarding();
 
       vscode.window.showInformationMessage(
-        'CodePause is ready with default settings. You can customize later in settings.'
+        'CodeVibe is ready with default settings. You can customize later in settings.'
       );
 
       // Close panel
@@ -126,7 +126,7 @@ export class OnboardingFlow {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodePause Setup</title>
+    <title>CodeVibe Setup</title>
     <style>
         * {
             margin: 0;
@@ -330,7 +330,7 @@ export class OnboardingFlow {
         <!-- Step 1: Welcome -->
         <div class="step active" id="step1">
             <div class="logo">🧘‍♂️</div>
-            <h1>Welcome to CodePause</h1>
+            <h1>Welcome to CodeVibe</h1>
             <p style="text-align: center; font-size: 16px; margin-bottom: 32px;">
                 Track and improve your AI coding habits with intelligent alerts and gamification
             </p>
@@ -339,11 +339,11 @@ export class OnboardingFlow {
                 <h3 style="margin-bottom: 12px;">🛡️ Privacy First</h3>
                 <p style="color: var(--vscode-foreground); margin-bottom: 0;">
                     All your data stays 100% local on your machine. We never collect, store, or transmit
-                    your code or metrics to any server. CodePause is a personal coaching tool, not a surveillance system.
+                    your code or metrics to any server. CodeVibe is a personal coaching tool, not a surveillance system.
                 </p>
             </div>
 
-            <h3 style="margin: 24px 0 12px 0;">What CodePause does:</h3>
+            <h3 style="margin: 24px 0 12px 0;">What CodeVibe does:</h3>
             <ul class="features-list">
                 <li>Tracks your AI tool usage across Copilot, Cursor, and Claude Code</li>
                 <li>Detects when you might be accepting suggestions too quickly</li>
@@ -354,7 +354,7 @@ export class OnboardingFlow {
 
             <p style="margin-top: 24px;">
                 Research shows that <strong>balanced AI usage</strong> helps maintain critical thinking skills
-                and long-term productivity. Let's set up CodePause for your needs!
+                and long-term productivity. Let's set up CodeVibe for your needs!
             </p>
 
             <div class="buttons">
@@ -413,7 +413,7 @@ export class OnboardingFlow {
         <!-- Step 3: Preferences -->
         <div class="step" id="step3">
             <h1>Customize Your Experience</h1>
-            <p style="text-align: center;">Choose how CodePause coaches you</p>
+            <p style="text-align: center;">Choose how CodeVibe coaches you</p>
 
             <div class="option-group">
                 <label class="option-label">Alert Frequency</label>

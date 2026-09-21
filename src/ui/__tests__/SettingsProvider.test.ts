@@ -109,7 +109,7 @@ describe('SettingsProvider', () => {
 
       expect(mockCreateWebviewPanel).toHaveBeenCalledWith(
         'codePauseSettings',
-        'CodePause Settings',
+        'CodeVibe Settings',
         1,
         {
           enableScripts: true,
@@ -131,7 +131,7 @@ describe('SettingsProvider', () => {
       await provider.show();
 
       expect(mockPanel.webview.html).toContain('<!DOCTYPE html>');
-      expect(mockPanel.webview.html).toContain('CodePause Settings');
+      expect(mockPanel.webview.html).toContain('CodeVibe Settings');
     });
 
     it('should setup message handler', async () => {

@@ -1,18 +1,21 @@
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
 /**
- * Generates the HTML content for the CodePause dashboard webview
+ * Generates the HTML content for the CodeVibe dashboard webview
  * @param webview The webview instance
  * @param extensionUri The extension URI for loading resources
  * @returns HTML string for the dashboard
  */
-export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-  const logoUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'resources', 'codepause-icon.svg')
-  );
-  const codiconCssUri = webview.asWebviewUri(
-    vscode.Uri.joinPath(extensionUri, 'resources', 'codicon.css')
-  );
+export function getDashboardHtml(
+    webview: vscode.Webview,
+    extensionUri: vscode.Uri,
+): string {
+    const logoUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, "resources", "codepause-icon.svg"),
+    );
+    const codiconCssUri = webview.asWebviewUri(
+        vscode.Uri.joinPath(extensionUri, "resources", "codicon.css"),
+    );
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -20,7 +23,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${webview.cspSource}; script-src 'unsafe-inline'; img-src ${webview.cspSource} data:;">
-    <title>CodePause Dashboard</title>
+    <title>CodeVibe Dashboard</title>
     <link rel="stylesheet" href="${codiconCssUri}">
     <style>
 
@@ -1880,13 +1883,166 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
                 width: 60px;
             }
         }
+
+        /* ==================== Assignment policy panel ==================== */
+        .ap-card {
+            margin-bottom: 16px;
+            padding: 14px 16px;
+            background: var(--vscode-sideBar-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 6px;
+            border-left: 3px solid var(--vscode-panel-border);
+        }
+
+        .ap-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .ap-eyebrow {
+            font-size: 10px;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 2px;
+        }
+
+        .ap-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+
+        .ap-dates {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 2px;
+        }
+
+        .ap-dates a {
+            text-decoration: none;
+        }
+
+        .ap-pill {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.4px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid currentColor;
+            white-space: nowrap;
+            margin-top: 2px;
+        }
+
+        .ap-meters {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .ap-meter-row-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 4px;
+        }
+
+        .ap-meter-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+            letter-spacing: 0.4px;
+        }
+
+        .ap-meter-value {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .ap-meter {
+            position: relative;
+            height: 8px;
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+        }
+
+        .ap-meter-fill {
+            height: 100%;
+            border-radius: 3px;
+        }
+
+        .ap-meter-tick {
+            position: absolute;
+            top: -3px;
+            bottom: -3px;
+            width: 2px;
+            transform: translateX(-1px);
+            background: var(--vscode-foreground);
+            opacity: 0.55;
+            border-radius: 1px;
+        }
+
+        .ap-verdict {
+            font-size: 11px;
+            margin-top: 3px;
+        }
+
+        .ap-files {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .ap-section-title {
+            font-size: 10px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--vscode-descriptionForeground);
+            margin: 14px 0 6px;
+            padding-top: 12px;
+            border-top: 1px solid var(--vscode-panel-border);
+        }
+
+        .ap-violation {
+            padding: 6px 10px;
+            background: var(--vscode-editor-background);
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--vscode-foreground);
+            border-left: 3px solid transparent;
+        }
+
+        .ap-footer {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--vscode-panel-border);
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .ap-export-btn {
+            padding: 5px 12px;
+            font-size: 11px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .ap-export-btn:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <img src="${logoUri}" alt="CodePause" class="logo" />
+            <img src="${logoUri}" alt="CodeVibe" class="logo" />
         <div class="header-content">
-            <h1>CodePause Dashboard</h1>
+            <h1>CodeVibe Dashboard</h1>
             <p class="subtitle">Pause. Review. Own your code.</p>
         </div>
     </div>
@@ -1926,6 +2082,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
         </div>
     </div>
 
+    <div id="assignment-panel"></div>
     <div id="content">
         <div class="loading">Loading dashboard...</div>
     </div>
@@ -1988,6 +2145,10 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
 
         function exportData() {
             vscode.postMessage({ type: 'export' });
+        }
+
+        function exportAssignmentReport() {
+            vscode.postMessage({ type: 'exportAssignmentReport' });
         }
 
         function openSettings() {
@@ -2147,8 +2308,148 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
             }
         });
 
+        function renderAssignmentPanel(assignmentData) {
+            const panel = document.getElementById('assignment-panel');
+            if (!panel) { return; }
+
+            if (!assignmentData || !assignmentData.assignment) {
+                panel.innerHTML = '';
+                panel.style.display = 'none';
+                return;
+            }
+
+            const assignment = assignmentData.assignment;
+            const metrics = assignmentData.metrics;
+            const policy = assignment.policy;
+            const status = metrics
+                ? computeAssignmentStatus(metrics, policy)
+                : { label: 'No data yet', class: 'info', color: 'var(--vscode-descriptionForeground)' };
+
+            const fmtDate = function(d) {
+                return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+            const metaBits = [fmtDate(assignment.startDate) + ' \u2192 ' + fmtDate(assignment.endDate)];
+            if (assignment.courseId) { metaBits.push(escapeHtml(assignment.courseId)); }
+            if (assignment.repoUrl) { metaBits.push('<a href="' + escapeHtml(assignment.repoUrl) + '" style="color: var(--vscode-textLink-foreground);">Repository</a>'); }
+
+            // Policy-limit meters: the tick marks the policy bound; fill color
+            // shows which side of it the student is on.
+            let metersHtml = '';
+            if (metrics) {
+                const a = metrics.authorship;
+                const o = metrics.ownership;
+
+                const aPct = Math.round(a.authorshipPercentage * 10) / 10;
+                const aWithin = a.authorshipPercentage <= policy.maxAuthorshipPercentage;
+                const aColor = aWithin ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-editorError-foreground)';
+                const aVerdict = aWithin
+                    ? 'Within the ' + policy.maxAuthorshipPercentage + '% limit'
+                    : 'Over the ' + policy.maxAuthorshipPercentage + '% limit';
+
+                const oScore = Math.round(o.score);
+                const oFiles = o.filesReviewed + o.filesUnreviewed;
+                const oOk = o.score >= policy.minOwnershipScore;
+                const oColor = oOk ? 'var(--vscode-testing-iconPassed)' : 'var(--vscode-editorWarning-foreground)';
+                const oVerdict = oFiles === 0
+                    ? 'No AI files to review yet'
+                    : (oOk ? 'Above the ' + policy.minOwnershipScore + ' minimum' : 'Below the ' + policy.minOwnershipScore + ' minimum');
+
+                let filesLine = '';
+                if (o.filesUnreviewed > 0) {
+                    filesLine = '<div class="ap-files" style="color: var(--vscode-editorWarning-foreground);">' + o.filesUnreviewed + ' file' + (o.filesUnreviewed === 1 ? '' : 's') + ' need' + (o.filesUnreviewed === 1 ? 's' : '') + ' review</div>';
+                } else if (o.filesReviewed > 0) {
+                    filesLine = '<div class="ap-files">All AI files reviewed</div>';
+                }
+
+                metersHtml =
+                    '<div class="ap-meters">' +
+                        '<div>' +
+                            '<div class="ap-meter-row-head">' +
+                                '<span class="ap-meter-label">AI authorship</span>' +
+                                '<span class="ap-meter-value" style="color: ' + aColor + ';">' + aPct + '%</span>' +
+                            '</div>' +
+                            '<div class="ap-meter" title="AI authorship ' + aPct + '% (limit ' + policy.maxAuthorshipPercentage + '%)">' +
+                                '<div class="ap-meter-fill" style="width: ' + Math.min(aPct, 100) + '%; background: ' + aColor + ';"></div>' +
+                                '<div class="ap-meter-tick" style="left: ' + Math.max(0, Math.min(100, policy.maxAuthorshipPercentage)) + '%;"></div>' +
+                            '</div>' +
+                            '<div class="ap-verdict" style="color: ' + aColor + ';">' + aVerdict + '</div>' +
+                        '</div>' +
+                        '<div>' +
+                            '<div class="ap-meter-row-head">' +
+                                '<span class="ap-meter-label">Ownership</span>' +
+                                '<span class="ap-meter-value" style="color: ' + oColor + ';">' + oScore + '/100</span>' +
+                            '</div>' +
+                            '<div class="ap-meter" title="Ownership ' + oScore + '/100 (minimum ' + policy.minOwnershipScore + ')">' +
+                                '<div class="ap-meter-fill" style="width: ' + Math.max(0, Math.min(100, oScore)) + '%; background: ' + oColor + ';"></div>' +
+                                '<div class="ap-meter-tick" style="left: ' + Math.max(0, Math.min(100, policy.minOwnershipScore)) + '%;"></div>' +
+                            '</div>' +
+                            '<div class="ap-verdict" style="color: ' + oColor + ';">' + oVerdict + '</div>' +
+                        '</div>' +
+                        filesLine +
+                    '</div>';
+            }
+
+            const violations = metrics && metrics.violations ? metrics.violations : [];
+            const severityColor = {
+                high: 'var(--vscode-editorError-foreground)',
+                medium: 'var(--vscode-editorWarning-foreground)',
+                low: 'var(--vscode-editorInfo-foreground)'
+            };
+            const severityRank = { high: 0, medium: 1, low: 2 };
+            const orderedViolations = violations.slice().sort(function(x, y) {
+                return (severityRank[x.severity] !== undefined ? severityRank[x.severity] : 2) -
+                       (severityRank[y.severity] !== undefined ? severityRank[y.severity] : 2);
+            });
+            const violationsBody = orderedViolations.length === 0
+                ? '<div class="ap-violation" style="border-left-color: var(--vscode-testing-iconPassed);">No policy violations detected</div>'
+                : orderedViolations.map(function(v) {
+                    const countSuffix = v.count > 1 ? ' <span style="opacity: 0.65;">&times;' + v.count + '</span>' : '';
+                    const color = severityColor[v.severity] || severityColor.low;
+                    return '<div class="ap-violation" style="border-left-color: ' + color + ';">' + escapeHtml(v.message) + countSuffix + '</div>';
+                }).join('');
+
+            panel.innerHTML =
+                '<div class="ap-card" style="border-left-color: ' + status.color + ';">' +
+                    '<div class="ap-head">' +
+                        '<div>' +
+                            '<div class="ap-eyebrow">Assignment</div>' +
+                            '<div class="ap-name">' + escapeHtml(assignment.name) + '</div>' +
+                            '<div class="ap-dates">' + metaBits.join(' &middot; ') + '</div>' +
+                        '</div>' +
+                        '<div class="ap-pill" style="color: ' + status.color + ';">' + status.label + '</div>' +
+                    '</div>' +
+                    metersHtml +
+                    '<div class="ap-section-title">Policy violations</div>' +
+                    '<div style="display: flex; flex-direction: column; gap: 6px;">' + violationsBody + '</div>' +
+                    '<div class="ap-footer">' +
+                        '<button class="ap-export-btn" onclick="exportAssignmentReport()">Export report for submission</button>' +
+                    '</div>' +
+                '</div>';
+            panel.style.display = 'block';
+        }
+
+        function computeAssignmentStatus(metrics, policy) {
+            if (!metrics) {
+                return { label: 'No data', class: 'info', color: 'var(--vscode-descriptionForeground)' };
+            }
+            const hasHigh = metrics.violations.some(function(v) { return v.severity === 'high'; });
+            const hasMedium = metrics.violations.some(function(v) { return v.severity === 'medium'; });
+            const authorshipOk = metrics.authorship.authorshipPercentage <= policy.maxAuthorshipPercentage;
+            const ownershipOk = metrics.ownership.score >= policy.minOwnershipScore;
+
+            if (hasHigh) {
+                return { label: 'Policy violations', class: 'error', color: 'var(--vscode-editorError-foreground)' };
+            }
+            if (hasMedium || !authorshipOk || !ownershipOk) {
+                return { label: 'Attention needed', class: 'warning', color: 'var(--vscode-editorWarning-foreground)' };
+            }
+            return { label: 'On track', class: 'good', color: 'var(--vscode-testing-iconPassed)' };
+        }
+
         function renderDashboard(data) {
             try {
+                renderAssignmentPanel(data.assignment);
+
                 const content = document.getElementById('content');
 
                 // Update streak badge
@@ -2201,7 +2502,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
                             </div>
                             <p class="cta-text">Ready to continue? Start coding to track today's progress.</p>
                         \` : \`
-                            <p class="first-day-text">CodePause is tracking your AI balance today.</p>
+                            <p class="first-day-text">CodeVibe is tracking your AI balance today.</p>
                             <p class="cta-text">Use Copilot, Cursor, Claude Code or whatever AI tool you prefer to see insights.</p>
                         \`}
                     </div>
@@ -2988,7 +3289,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
                 sortTools(currentSortBy);
             }
             } catch (error) {
-                console.error('CodePause: Error rendering dashboard:', error);
+                console.error('CodeVibe: Error rendering dashboard:', error);
                 const content = document.getElementById('content');
                 if (content) {
                     // SECURITY: Use textContent to prevent XSS attacks

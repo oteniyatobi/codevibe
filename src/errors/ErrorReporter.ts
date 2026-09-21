@@ -23,7 +23,7 @@ export class ErrorReporter {
     private context: vscode.ExtensionContext,
     private telemetryService?: TelemetryService
   ) {
-    this.outputChannel = vscode.window.createOutputChannel('CodePause Errors');
+    this.outputChannel = vscode.window.createOutputChannel('CodeVibe Errors');
   }
 
   /**
@@ -63,7 +63,7 @@ export class ErrorReporter {
    */
   private async showErrorNotification(errorContext: ErrorContext): Promise<void> {
     const action = await vscode.window.showErrorMessage(
-      `CodePause Error: ${errorContext.errorType}\n${errorContext.message}`,
+      `CodeVibe Error: ${errorContext.errorType}\n${errorContext.message}`,
       'Report Bug',
       'Show Details',
       'Dismiss'
@@ -123,7 +123,7 @@ ${errorContext.stack || 'Not available'}
 \`\`\`
 
 **Environment**:
-- CodePause Version: ${extensionVersion}
+- CodeVibe Version: ${extensionVersion}
 - VS Code Version: ${vscodeVersion}
 - Platform: ${process.platform}
 - Timestamp: ${new Date(errorContext.timestamp).toISOString()}
@@ -143,7 +143,7 @@ ${JSON.stringify(errorContext.context || {}, null, 2)}
    */
   private showErrorDetails(errorContext: ErrorContext): void {
     this.outputChannel.clear();
-    this.outputChannel.appendLine('CodePause Error Details');
+    this.outputChannel.appendLine('CodeVibe Error Details');
     this.outputChannel.appendLine('='.repeat(80));
     this.outputChannel.appendLine(`Error Type: ${errorContext.errorType}`);
     this.outputChannel.appendLine(`Message: ${errorContext.message}`);

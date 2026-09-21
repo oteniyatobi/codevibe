@@ -13,6 +13,8 @@ import { FileReviewTracker } from './FileReviewTracker';
 import { FileReviewSessionTracker } from './FileReviewSessionTracker';
 import { EventDeduplicator } from '../tracking/EventDeduplicator';
 import { TelemetryService } from '../telemetry/TelemetryService';
+import { AssignmentManager } from '../assignments/AssignmentManager';
+import { PolicyEngine } from '../assignments/PolicyEngine';
 import {
   TrackingEvent,
   PendingSuggestion,
@@ -24,7 +26,9 @@ import {
   ReviewQuality,
   EVENT_DEBOUNCE_MS,
   SESSION_IDLE_TIMEOUT_MS,
-  DEFAULT_THRESHOLDS
+  DEFAULT_THRESHOLDS,
+  Assignment,
+  CodeSource
 } from '../types';
 
 export class MetricsCollector implements IMetricsCollector {
@@ -50,10 +54,17 @@ export class MetricsCollector implements IMetricsCollector {
   private fileReviewSessionTracker: FileReviewSessionTracker;
   private telemetryService?: TelemetryService;
 
+  // Assignment tracking
+  private assignmentManager: AssignmentManager;
+  private policyEngine: PolicyEngine;
+  private activeAssignment: Assignment | null = null;
+
   constructor(
     private metricsRepo: MetricsRepository,
     private configManager: ConfigManager,
-    telemetryService?: TelemetryService
+    telemetryService?: TelemetryService,
+    assignmentManager?: AssignmentManager,
+    policyEngine?: PolicyEngine
   ) {
     this.telemetryService = telemetryService;
     // Initialize new components
@@ -68,6 +79,10 @@ export class MetricsCollector implements IMetricsCollector {
 
     // Initialize EventDeduplicator (99.99% accurate, tested in Phase 1)
     this.eventDeduplicator = new EventDeduplicator();
+
+    // Initialize assignment tracking
+    this.assignmentManager = assignmentManager ?? new AssignmentManager(this.metricsRepo);
+    this.policyEngine = policyEngine ?? new PolicyEngine();
   }
 
   public onEvent(handler: (event: TrackingEvent) => void): void {
@@ -80,6 +95,16 @@ export class MetricsCollector implements IMetricsCollector {
     }
 
     try {
+      // Load active assignment before trackers start emitting events.
+      // If the repository does not support assignments yet (e.g. legacy tests),
+      // continue without an active assignment.
+      try {
+        this.activeAssignment = await this.assignmentManager.getActiveAssignment();
+      } catch (assignmentError) {
+        console.warn('[MetricsCollector] Could not load active assignment:', assignmentError);
+        this.activeAssignment = null;
+      }
+
       // Initialize trackers based on config
       await this.initializeTrackers();
 
@@ -261,6 +286,18 @@ export class MetricsCollector implements IMetricsCollector {
     // Event deduplication - prevents double-counting
     if (this.eventDeduplicator.isDuplicate(event)) {
       return;
+    }
+
+    // ========== Assignment Tracking Integration ==========
+    if (this.activeAssignment && !event.assignmentId) {
+      event.assignmentId = this.activeAssignment.id;
+
+      // Only classify AI events; manual events are implicitly permitted
+      if (event.source === CodeSource.AI) {
+        const evaluation = this.policyEngine.classifyEvent(event, this.activeAssignment.policy);
+        event.aiClassification = evaluation.classification;
+        event.policyViolation = evaluation.violationType;
+      }
     }
 
     // Extract metadata for later use
@@ -801,5 +838,24 @@ export class MetricsCollector implements IMetricsCollector {
 
   getFileReviewSessionTracker(): FileReviewSessionTracker {
     return this.fileReviewSessionTracker;
+  }
+
+  // ========== NEW: Assignment Tracking Accessors ==========
+
+  getAssignmentManager(): AssignmentManager {
+    return this.assignmentManager;
+  }
+
+  getPolicyEngine(): PolicyEngine {
+    return this.policyEngine;
+  }
+
+  getActiveAssignment(): Assignment | null {
+    return this.activeAssignment;
+  }
+
+  async refreshActiveAssignment(): Promise<Assignment | null> {
+    this.activeAssignment = await this.assignmentManager.getActiveAssignment();
+    return this.activeAssignment;
   }
 }

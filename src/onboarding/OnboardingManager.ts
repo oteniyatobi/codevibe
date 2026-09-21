@@ -48,7 +48,7 @@ export class OnboardingManager {
 
       this.panel = vscode.window.createWebviewPanel(
         'codePauseOnboarding',
-        'CodePause Setup',
+        'CodeVibe Setup',
         vscode.ViewColumn.One,
         {
           enableScripts: true,
@@ -85,7 +85,7 @@ export class OnboardingManager {
     } catch (error) {
       console.error('[CodePause] Onboarding error:', error);
       vscode.window.showErrorMessage(
-        'CodePause onboarding encountered an error. You can restart it later with: Ctrl+Shift+P → "CodePause: Start Onboarding"'
+        'CodeVibe onboarding encountered an error. You can restart it later with: Ctrl+Shift+P → "CodeVibe: Start Onboarding"'
       );
     }
   }
@@ -110,7 +110,7 @@ export class OnboardingManager {
 
       // Show success notification
       vscode.window.showInformationMessage(
-        '✅ Setup complete! CodePause is now tracking in the background.',
+        '✅ Setup complete! CodeVibe is now tracking in the background.',
         'Open Dashboard'
       ).then(action => {
         if (action === 'Open Dashboard') {
@@ -148,7 +148,7 @@ export class OnboardingManager {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodePause Setup</title>
+    <title>CodeVibe Setup</title>
     <style>
         * {
             margin: 0;
@@ -487,7 +487,7 @@ export class OnboardingManager {
 <body>
     <div class="container">
         <div class="header">
-            <div class="header-title">CodePause Setup</div>
+            <div class="header-title">CodeVibe Setup</div>
             <div class="header-subtitle">AI usage tracking for developers</div>
         </div>
 
@@ -505,7 +505,7 @@ export class OnboardingManager {
             <div class="step active" id="step1">
                 <h2>Welcome</h2>
                 <p class="description">
-                    CodePause helps you maintain code ownership while using AI assistants like Copilot, Cursor, and Claude Code.
+                    CodeVibe helps you maintain code ownership while using AI assistants like Copilot, Cursor, and Claude Code.
                 </p>
 
                 <div class="feature-list">
@@ -598,7 +598,7 @@ export class OnboardingManager {
                         <polyline points="22 4 12 14.01 9 11.01"/>
                     </svg>
                     <div class="success-title">Setup Complete</div>
-                    <div class="success-desc">CodePause is now tracking your AI usage in the background.</div>
+                    <div class="success-desc">CodeVibe is now tracking your AI usage in the background.</div>
                 </div>
 
                 <div class="info-grid">

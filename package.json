@@ -1,9 +1,13 @@
 {
-  "name": "code-pause",
-  "displayName": "CodePause",
-  "description": "Pause. Review. Own your code. Balance AI assistance with skill development.",
-  "version": "0.1.4",
+  "name": "codevibe-verify",
+  "displayName": "CodeVibe",
+  "description": "Track your coding flow. Balance AI assistance with skill development.",
+  "version": "0.1.7",
   "publisher": "codepause",
+  "bin": {
+    "codevibe-verify": "./out/cli/verify.js",
+    "verify-assignment-report": "./out/cli/verify.js"
+  },
   "icon": "resources/codepause-icon.png",
   "repository": {
     "type": "git",
@@ -21,111 +25,136 @@
     "commands": [
       {
         "command": "codePause.openDashboard",
-        "title": "CodePause: Open Dashboard",
+        "title": "CodeVibe: Open Dashboard",
         "icon": "$(dashboard)"
       },
       {
         "command": "codePause.startOnboarding",
-        "title": "CodePause: Start Onboarding",
+        "title": "CodeVibe: Start Onboarding",
         "icon": "$(rocket)"
       },
       {
         "command": "codePause.resetOnboarding",
-        "title": "CodePause: Reset Onboarding (Debug)"
+        "title": "CodeVibe: Reset Onboarding (Debug)"
       },
       {
         "command": "codePause.openSettings",
-        "title": "CodePause: Open Settings",
+        "title": "CodeVibe: Open Settings",
         "icon": "$(settings-gear)"
       },
       {
         "command": "codePause.snooze",
-        "title": "CodePause: Snooze Alerts for Today",
+        "title": "CodeVibe: Snooze Alerts for Today",
         "icon": "$(bell-slash)"
       },
       {
         "command": "codePause.refreshDashboard",
-        "title": "CodePause: Refresh Dashboard",
+        "title": "CodeVibe: Refresh Dashboard",
         "icon": "$(refresh)"
       },
       {
         "command": "codePause.showStats",
-        "title": "CodePause: Show Quick Stats"
+        "title": "CodeVibe: Show Quick Stats"
       },
       {
         "command": "codePause.showDatabaseInfo",
-        "title": "CodePause: Show Database Info"
+        "title": "CodeVibe: Show Database Info"
       },
       {
         "command": "codePause.showProgression",
-        "title": "CodePause: Show Progression & Level",
+        "title": "CodeVibe: Show Progression & Level",
         "icon": "$(star)"
       },
       {
         "command": "codePause.showAchievements",
-        "title": "CodePause: Show Achievements",
+        "title": "CodeVibe: Show Achievements",
         "icon": "$(trophy)"
       },
       {
         "command": "codePause.showAdvancedSettings",
-        "title": "CodePause: Advanced Settings",
+        "title": "CodeVibe: Advanced Settings",
         "icon": "$(gear)"
       },
       {
         "command": "codePause.exportData",
-        "title": "CodePause: Export Data",
+        "title": "CodeVibe: Export Data",
         "icon": "$(export)"
       },
       {
         "command": "codePause.importData",
-        "title": "CodePause: Import Data",
+        "title": "CodeVibe: Import Data",
         "icon": "$(import)"
       },
       {
         "command": "codePause.showSnoozeStatus",
-        "title": "CodePause: Show Snooze Status"
+        "title": "CodeVibe: Show Snooze Status"
       },
       {
         "command": "codePause.changeExperienceLevel",
-        "title": "CodePause: Change Experience Level",
+        "title": "CodeVibe: Change Experience Level",
         "icon": "$(account)"
       },
       {
         "command": "codePause.forceFullScan",
-        "title": "CodePause: Force Full Scan (Find All AI Files)",
+        "title": "CodeVibe: Force Full Scan (Find All AI Files)",
         "icon": "$(search)"
       },
       {
         "command": "codePause.resetAchievements",
-        "title": "CodePause: Reset Achievements",
+        "title": "CodeVibe: Reset Achievements",
         "icon": "$(debug-restart)"
       },
       {
         "command": "codePause.clearAllData",
-        "title": "CodePause: Clear All Data",
+        "title": "CodeVibe: Clear All Data",
         "icon": "$(trash)"
       },
       {
         "command": "codePause.cleanupOldData",
-        "title": "CodePause: Cleanup Old Data (Test 30-Day Retention)",
+        "title": "CodeVibe: Cleanup Old Data (Test 30-Day Retention)",
         "icon": "$(trash)"
       },
       {
         "command": "codePause.checkThresholds",
-        "title": "CodePause: Check Thresholds",
+        "title": "CodeVibe: Check Thresholds",
         "icon": "$(bell)"
       },
       {
         "command": "codePause.testNotification",
-        "title": "CodePause: Test Notifications (Debug)",
+        "title": "CodeVibe: Test Notifications (Debug)",
         "icon": "$(bell-dot)"
+      },
+      {
+        "command": "codePause.createAssignment",
+        "title": "CodeVibe: Create Assignment",
+        "icon": "$(tasklist)"
+      },
+      {
+        "command": "codePause.activateAssignment",
+        "title": "CodeVibe: Activate Assignment",
+        "icon": "$(check)"
+      },
+      {
+        "command": "codePause.deactivateAssignment",
+        "title": "CodeVibe: Deactivate Assignment",
+        "icon": "$(close)"
+      },
+      {
+        "command": "codePause.showAssignmentStatus",
+        "title": "CodeVibe: Show Assignment Status",
+        "icon": "$(info)"
+      },
+      {
+        "command": "codePause.exportAssignmentReport",
+        "title": "CodeVibe: Export Assignment Report",
+        "icon": "$(export)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "codePause",
-          "title": "CodePause",
+          "title": "CodeVibe",
           "icon": "resources/codepause-activitybar.svg"
         }
       ]
@@ -149,7 +178,7 @@
       ]
     },
     "configuration": {
-      "title": "CodePause",
+      "title": "CodeVibe",
       "properties": {
         "codePause.experienceLevel": {
           "type": "string",
@@ -184,7 +213,7 @@
         "codePause.enableTelemetry": {
           "type": "boolean",
           "default": true,
-          "description": "Enable anonymous usage telemetry to help improve CodePause. No code or personal data is collected. Respects VS Code's global telemetry setting."
+          "description": "Enable anonymous usage telemetry to help improve CodeVibe. No code or personal data is collected. Respects VS Code's global telemetry setting."
         },
         "codePause.anonymizePaths": {
           "type": "boolean",

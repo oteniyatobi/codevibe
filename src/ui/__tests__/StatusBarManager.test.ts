@@ -97,7 +97,7 @@ describe('StatusBarManager', () => {
 
     it('should set command and tooltip', () => {
       expect(mockStatusBarItem.command).toBe('codePause.openDashboard');
-      expect(mockStatusBarItem.tooltip).toBe('Click to open CodePause dashboard');
+      expect(mockStatusBarItem.tooltip).toBe('Click to open CodeVibe dashboard');
     });
 
     it('should initialize and show status bar', async () => {
@@ -131,7 +131,7 @@ describe('StatusBarManager', () => {
       mockMetricsRepo.getDailyMetrics.mockResolvedValue(null);
       await statusBarManager.refresh();
 
-      expect(mockStatusBarItem.text).toBe('🤖 CodePause');
+      expect(mockStatusBarItem.text).toBe('🤖 CodeVibe');
       expect(mockStatusBarItem.color).toBeUndefined();
     });
 
@@ -148,7 +148,7 @@ describe('StatusBarManager', () => {
       } as any);
 
       await statusBarManager.refresh();
-      expect(mockStatusBarItem.text).toBe('🤖 CodePause');
+      expect(mockStatusBarItem.text).toBe('🤖 CodeVibe');
     });
 
     it('should show snoozed state when snoozed', async () => {
