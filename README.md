@@ -162,8 +162,8 @@ Language-aware: `src/core/ReviewQualityAnalyzer.ts` scales expected review time 
 **From source:**
 
 ```bash
-git clone https://github.com/codepause-dev/codepause-extension.git
-cd codepause-extension
+git clone https://github.com/waka-man/codevibe.git
+cd codevibe
 npm install
 npm run compile          # tsc → out/
 npm test                 # 1438 tests
@@ -190,14 +190,14 @@ codevibe-verify --help
 |---|---|
 | `CodeVibe: Open Dashboard` | Reveal `codePause.dashboardView` + `refresh(true)` |
 | `CodeVibe: Refresh Dashboard` | `metricsCollector.triggerAggregation()` + dashboard/status bar refresh |
-| `CodeVibe: Create / Activate / Deactivate Assignment` | `AssignmentManager.ts:29-56` lifecycle |
+| `CodeVibe: Create Assignment` | `AssignmentManager.ts:29` — new assignment with policy |
+| `CodeVibe: Activate Assignment` | `AssignmentManager.ts:53` — set active assignment |
+| `CodeVibe: Deactivate Assignment` | `AssignmentManager.ts:61` — clear active assignment |
 | `CodeVibe: Export Assignment Report` | `AssignmentReportGenerator.ts:87` → save `*.report.json` |
 | `CodeVibe: Show Assignment Status` | Modal with `authorship%`, `ownership`, violation list |
 | `CodeVibe: Change Experience Level` | Update `ThresholdManager.ts` + `ConfigRepository.ts` |
 | `CodeVibe: Clear All Data` | Deletes `~/.codepause/*.db` + `.vscode/codepause-baselines.json` |
 | `CodeVibe: Show Database Info` | `DatabaseManager.ts` stats |
-
-Dashboard also posts `refresh`, `openSettings`, `snooze`, `exportAssignmentReport` via webview `src/ui/DashboardHtml.ts:2135` → `DashboardProvider.ts:84`.
 
 ---
 
@@ -209,7 +209,6 @@ Dashboard also posts `refresh`, `openSettings`, `snooze`, `exportAssignmentRepor
 - `codePause.blindApprovalThreshold` `2000` ms
 - `codePause.alertFrequency` `low|medium|high` (`medium`)
 - `codePause.enableGamification` `false`
-- `codePause.anonymizePaths` `true`
 
 Thresholds live in `src/core/ThresholdManager.ts`, alerts in `src/alerts/AlertEngine.ts:87`.
 
@@ -225,21 +224,20 @@ npm test             # jest --coverage (1438 tests, 42 suites)
 npx vsce package     # → codevibe-verify-0.1.7.vsix (includes out/ + node_modules/sql.js)
 ```
 
-Structure: `src/storage` (SQLite `sql.js` WASM, `DatabaseManager.ts:135` wasm path), `src/core` (`MetricsCollector.ts` hub, `PolicyEngine.ts:82` violations), `src/trackers` (`UnifiedAITracker.ts`), `src/ui` (`DashboardHtml.ts:11` template literal), `src/cli/verify.ts` (standalone verifier), `src/assignments` (manager + generator). See `ARCHITECTURE.md`.
+Structure: `src/storage` (SQLite `sql.js` WASM, `DatabaseManager.ts:135` wasm path), `src/core` (`MetricsCollector.ts` hub, `PolicyEngine.ts:82` violations), `src/trackers` (`UnifiedAITracker.ts`), `src/ui` (`DashboardHtml.ts:11` template literal), `src/cli/verify.ts` (standalone verifier), `src/assignments` (manager + generator).
 
 ---
 
 ## Privacy
 
-- `100%` local. SQLite files in `~/.codepause/` (workspace-specific `~/.codepause/<hash>.db`), no code content stored, `files: ["out","resources","scripts/verify-assignment-report.js"]` for npm, `.vscodeignore` keeps `node_modules/sql.js` + `date-fns` only.
-- `codePause.anonymizePaths` hashes file paths if you enable it.
-- Telemetry: `TelemetryService.ts` respects VS Code global `telemetry.enableTelemetry` and `codePause.enableTelemetry` (default `true`, anonymous only).
+- `100%` local. SQLite files in `~/.codepause/` (workspace-specific `~/.codepause/<hash>.db`), no code content stored.
+- No code, prompts, or file contents ever leave the machine.
 
 ---
 
 ## License
 
-**Business Source License 1.1** — free for personal & internal company use, not for a competing commercial extension/SaaS. Converts to `Apache 2.0` on `2027-01-04`. Commercial: `license@codepause.dev`. See `LICENSE.md` + `LICENSE-COMMERCIAL.md`.
+**Business Source License 1.1** — free for personal & internal company use, not for a competing commercial extension/SaaS. Converts to `Apache 2.0` on `2027-01-04`. Commercial: `license@codepause.dev`. See `LICENSE.md`.
 
 ---
 
@@ -249,6 +247,6 @@ Structure: `src/storage` (SQLite `sql.js` WASM, `DatabaseManager.ts:135` wasm pa
 
 Pause. Review. Own your code. `codevibe-verify` your proof.
 
-<a href="https://github.com/codepause-dev/codepause-extension/issues">Report bug</a> · <a href="https://github.com/codepause-dev/codepause-extension/discussions">Discussion</a> · <a href="ARCHITECTURE.md">Architecture</a>
+<a href="https://github.com/waka-man/codevibe/issues">Report bug</a> · <a href="https://github.com/waka-man/codevibe/discussions">Discussion</a>
 
 </div>
