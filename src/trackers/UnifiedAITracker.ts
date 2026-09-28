@@ -11,6 +11,7 @@ import * as path from 'path';
 import { BaseTracker } from './BaseTracker';
 import { AIDetector } from '../detection/AIDetector';
 import { EventType, CodeSource, AIClassification } from '../types';
+import { isExcludedFile } from '../utils/ExcludedPaths';
 
 export class UnifiedAITracker extends BaseTracker {
   private aiDetector: AIDetector;
@@ -39,10 +40,31 @@ export class UnifiedAITracker extends BaseTracker {
   private baselinesSaveTimer: NodeJS.Timeout | null = null;
   private readonly BASELINES_SAVE_DEBOUNCE_MS = 1000;
 
+  // User-supplied extra exclusion globs (from `codePause.excludedGlobs`).
+  // Defaults are always enforced via isExcludedFile; these extend them.
+  private customExcludedGlobs: string[] = [];
+
   constructor(onEvent: (event: unknown) => void) {
     // Use 'ai' as unified source (not tool-specific)
     super('ai' as any, onEvent);
     this.aiDetector = new AIDetector();
+  }
+
+  /**
+   * Set user-supplied extra exclusion globs. Called by MetricsCollector
+   * after loading config so the file watcher respects custom ignores.
+   */
+  setCustomExclusions(globs: string[] | undefined): void {
+    this.customExcludedGlobs = Array.isArray(globs) ? [...globs] : [];
+  }
+
+  /**
+   * Hard-ignore check for generated/dependency paths (node_modules, venv,
+   * build outputs). Must run BEFORE any debounce timers, fs reads, or git
+   * work so installs never burst fake AI events.
+   */
+  private isExcluded(filePath: string): boolean {
+    return isExcludedFile(filePath, this.customExcludedGlobs);
   }
 
   // BUG #2 FIX: Load baselines from persistent storage
@@ -245,6 +267,11 @@ export class UnifiedAITracker extends BaseTracker {
     for (const doc of docs) {
       if (this.shouldTrackDocument(doc)) {
         const filePath = doc.uri.fsPath;
+        // shouldTrackDocument already excludes generated dirs; re-check for
+        // safety so baselines never bloat with node_modules/venv entries.
+        if (this.isExcluded(filePath)) {
+          continue;
+        }
         const lineCount = this.countLines(doc.getText());
 
         // Store baseline for this file (stays constant until file is reviewed)
@@ -269,6 +296,9 @@ export class UnifiedAITracker extends BaseTracker {
    * This ensures we can accurately calculate deltas for external modifications
    */
   private updateFileBaseline(filePath: string, document: vscode.TextDocument): void {
+    if (this.isExcluded(filePath)) {
+      return;
+    }
     const lineCount = this.countLines(document.getText());
 
     // Only set if we don't have a baseline yet
@@ -545,6 +575,12 @@ export class UnifiedAITracker extends BaseTracker {
       return;
     }
 
+    // Hard-ignore generated/dependency dirs BEFORE any debounce/git/fs work.
+    // Package installs burst thousands of files here; none are user code.
+    if (this.isExcluded(filePath)) {
+      return;
+    }
+
     this.log(`[FILE-CHANGE] FileSystemWatcher triggered for: ${fileName}`);
 
     const isFileOpen = this.openFiles.has(filePath);
@@ -601,6 +637,13 @@ export class UnifiedAITracker extends BaseTracker {
    */
   private async processFileChange(uri: vscode.Uri, filePath: string): Promise<void> {
     const fileName = filePath.split('/').pop();
+
+    // Defensive re-check (handleFileChange already filters, but file
+    // creation and debounced retries route through here too).
+    if (this.isExcluded(filePath)) {
+      return;
+    }
+
     this.log(`\n${'='.repeat(60)}`);
     this.log(`[PROCESS-CHANGE] Starting for: ${fileName}`);
 

@@ -2,7 +2,7 @@
   "name": "codevibe-verify",
   "displayName": "CodeVibe",
   "description": "Track your coding flow. Balance AI assistance with skill development.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "codepause",
   "bin": {
     "codevibe-verify": "./out/cli/verify.js",
@@ -112,6 +112,11 @@
       {
         "command": "codePause.cleanupOldData",
         "title": "CodeVibe: Cleanup Old Data (Test 30-Day Retention)",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "codePause.purgeExcludedData",
+        "title": "CodeVibe: Purge Excluded-Path Data (node_modules, venv)",
         "icon": "$(trash)"
       },
       {
@@ -228,6 +233,14 @@
             "claudeCode": true
           },
           "description": "Which AI tools to track (unified tracking enabled by default)"
+        },
+        "codePause.excludedGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra file globs to hard-ignore (appended to the built-in node_modules/venv/build-output ignore list). Events in these paths are never tracked."
         }
       }
     }

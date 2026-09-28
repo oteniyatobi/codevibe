@@ -393,12 +393,17 @@ export interface UserConfig {
   cursor: boolean;
   claudeCode: boolean;
  };
- customThresholds?: {
-  aiPercentageMax?: number;
-  acceptanceRateMin?: number;
-  reviewTimeMin?: number;
- };
- onboardingCompleted: boolean;
+  customThresholds?: {
+   aiPercentageMax?: number;
+   acceptanceRateMin?: number;
+   reviewTimeMin?: number;
+  };
+  /**
+   * Extra user-supplied exclusion globs (appended to the built-in
+   * generated/dependency ignore list). Hard-ignored at all layers.
+   */
+  excludedGlobs?: string[];
+  onboardingCompleted: boolean;
 }
 
 /**
@@ -702,19 +707,39 @@ export interface TrackingGap {
  * Assignment report submitted by a student
  */
 export interface AssignmentReport {
- reportVersion: "1.0";
- assignmentId: string;
- assignmentName: string;
- generatedAt: number;
- studentIdentifier?: string;
- repoUrl?: string;
- repoHeadCommit?: string;
- metrics: AssignmentMetrics;
- policy: AssignmentPolicy;
- integrity: {
-  algorithm: string;
-  hash: string;
- };
+  reportVersion: "1.0";
+  assignmentId: string;
+  assignmentName: string;
+  generatedAt: number;
+  studentIdentifier?: string;
+  repoUrl?: string;
+  repoHeadCommit?: string;
+  metrics: AssignmentMetrics;
+  policy: AssignmentPolicy;
+  /**
+   * Tamper-evidence: every change to the student-supplied exclusion list
+   * (`codePause.excludedGlobs`) inside the assignment window, plus
+   * assignment activation/deactivation markers. Custom globs are IGNORED
+   * while an assignment is active (lockdown), so entries here are attempts,
+   * not effective exemptions. Sealed by the integrity hash.
+   */
+  exclusionAudit: ExclusionAuditEntry[];
+  integrity: {
+    algorithm: string;
+    hash: string;
+  };
+}
+
+/**
+ * One entry in the exclusion audit trail.
+ */
+export interface ExclusionAuditEntry {
+  /** Unix timestamp (ms) of the change/marker */
+  timestamp: number;
+  /** The student-supplied globs after the change (empty for markers) */
+  globs: string[];
+  /** 'settings' (student edited settings) | 'assignment-activated' | 'assignment-deactivated' */
+  source: string;
 }
 
 // ==================== Database Schemas ====================

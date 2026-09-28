@@ -160,6 +160,7 @@ export class ConfigManager {
         cursor: false,  // Disabled by default
         claudeCode: true // Only Claude Code enabled by default
       },
+      excludedGlobs: [],
       onboardingCompleted: onboardingCompleted
     };
 
@@ -211,9 +212,30 @@ export class ConfigManager {
       updates.trackedTools = trackedTools;
     }
 
+    // Extra exclusion globs (user additions to the built-in ignore list)
+    const excludedGlobs = vscodeConfig.get<string[]>('excludedGlobs');
+    if (excludedGlobs !== undefined && JSON.stringify(excludedGlobs) !== JSON.stringify(this.config?.excludedGlobs ?? [])) {
+      updates.excludedGlobs = excludedGlobs;
+    }
+
     // Apply updates if any
     if (Object.keys(updates).length > 0) {
       this.config = await this.configRepo.updateConfig(updates);
+
+      // Tamper-evidence: audit every change to the user exclusion list.
+      // During an active assignment these customs are ignored (lockdown),
+      // so the audit trail shows attempts, not effective exemptions.
+      if (updates.excludedGlobs !== undefined) {
+        try {
+          await this.configRepo.recordExclusionAudit(
+            Date.now(),
+            updates.excludedGlobs,
+            'settings',
+          );
+        } catch (error) {
+          console.warn('[ConfigManager] Failed to record exclusion audit:', error);
+        }
+      }
     }
   }
 
@@ -242,6 +264,10 @@ export class ConfigManager {
 
     if (updates.trackedTools !== undefined) {
       await vscodeConfig.update('trackedTools', updates.trackedTools, true);
+    }
+
+    if (updates.excludedGlobs !== undefined) {
+      await vscodeConfig.update('excludedGlobs', updates.excludedGlobs, true);
     }
   }
 

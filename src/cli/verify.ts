@@ -104,6 +104,11 @@ interface Report {
     permittedMethods?: string[];
     flaggedMethods?: string[];
   };
+  exclusionAudit?: Array<{
+    timestamp: number;
+    globs: string[];
+    source: string;
+  }>;
   integrity: Integrity;
   [key: string]: unknown;
 }
@@ -120,6 +125,7 @@ type FileResult = {
   authorshipPct?: number;
   ownershipScore?: number;
   violations?: Report["metrics"]["violations"];
+  exclusionAudit?: NonNullable<Report["exclusionAudit"]>;
   skipped?: boolean;
 };
 
@@ -268,6 +274,24 @@ function renderHuman(results: FileResult[], opts: { useColor: boolean; verbose: 
       lines.push(`  ${colorize("Ownership: ", "bold", useColor)}${o.score.toFixed(1)} /100 (min ${policy.minOwnershipScore})  ${ownStatus} — ${o.filesReviewed} reviewed, ${o.filesUnreviewed} unreviewed (${o.unreviewedLines} lines)`);
       const violText = v.length === 0 ? colorize("0 — none", "green", useColor) : colorize(`${v.length} [${v.map(x => `${x.type} x${x.count} (${x.severity})`).join(", ")}]`, v.some(x => x.severity === "high") ? "red" : "yellow", useColor);
       lines.push(`  ${colorize("Violations:", "bold", useColor)} ${violText}`);
+      // Tamper-evidence: exclusion-list changes inside the assignment window.
+      // Custom globs are ignored while an assignment is active (lockdown),
+      // so settings-sourced entries are attempts, not effective exemptions.
+      const audit = r.exclusionAudit || [];
+      const settingChanges = audit.filter(e => e.source === "settings");
+      if (audit.length === 0) {
+        lines.push(`  ${colorize("Exclusion audit:", "dim", useColor)} no changes during assignment window`);
+      } else {
+        const auditColor = settingChanges.length > 0 ? "yellow" : "dim";
+        lines.push(`  ${colorize("Exclusion audit:", "bold", useColor)} ${colorize(`${audit.length} entr${audit.length === 1 ? "y" : "ies"} (${settingChanges.length} student settings change${settingChanges.length === 1 ? "" : "s"}, ignored by lockdown)`, auditColor, useColor)}`);
+        if (opts.verbose) {
+          for (const entry of audit) {
+            const when = formatDate(entry.timestamp);
+            const globs = entry.globs.length > 0 ? entry.globs.join(", ") : "—";
+            lines.push(`    - ${when} [${entry.source}]: ${globs}`);
+          }
+        }
+      }
       if (opts.verbose && v.length > 0) {
         for (const viol of v) {
           lines.push(`    - ${viol.severity.toUpperCase()} ${viol.type}: ${viol.message}${viol.count > 1 ? ` ×${viol.count}` : ""}`);
@@ -321,6 +345,7 @@ function renderJson(results: FileResult[]): string {
       ownershipScore: r.ownershipScore,
       policy: r.report?.policy,
       violations: r.violations,
+      exclusionAudit: r.exclusionAudit,
       storedHash: r.storedHash,
       expectedHash: r.expectedHash,
       skipped: r.skipped,
@@ -484,6 +509,7 @@ function main(): void {
       authorshipPct: report.metrics.authorship.authorshipPercentage,
       ownershipScore: report.metrics.ownership.score,
       violations,
+      exclusionAudit: Array.isArray(report.exclusionAudit) ? report.exclusionAudit : [],
     });
   }
 

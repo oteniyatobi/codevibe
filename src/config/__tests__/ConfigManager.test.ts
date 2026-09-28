@@ -318,6 +318,7 @@ describe('ConfigManager', () => {
           cursor: false,  // Disabled by default
           claudeCode: true // Only Claude Code enabled by default
         },
+        excludedGlobs: [],
         onboardingCompleted: false, // Should preserve onboarding status
       };
 

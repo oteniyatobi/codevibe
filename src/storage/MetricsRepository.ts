@@ -4,6 +4,7 @@
  */
 
 import { DatabaseManager } from "./DatabaseManager";
+import { isExcludedFile } from "../utils/ExcludedPaths";
 import {
   TrackingEvent,
   DailyMetrics,
@@ -29,6 +30,85 @@ export class MetricsRepository {
 
   async recordEvent(event: TrackingEvent): Promise<number> {
     return await this.db.insertEvent(event);
+  }
+
+  /**
+   * One-time/remedial purge of historical false positives from generated /
+   * dependency paths (node_modules, venv, build outputs) recorded before the
+   * hard-ignore list existed.
+   *
+   * Deletes matching events + file review rows, then recalculates daily
+   * metrics for every affected date so dashboard numbers recover.
+   * Built-in defaults always apply; extraGlobs extends them.
+   */
+  async purgeExcludedEvents(extraGlobs: string[] = []): Promise<{
+    eventsDeleted: number;
+    fileReviewsDeleted: number;
+    datesRecalculated: string[];
+  }> {
+    const affectedDates = new Set<string>();
+
+    const events = await this.db.getAllEventPaths();
+    const excludedEventIds: number[] = [];
+    for (const event of events) {
+      if (event.file_path && isExcludedFile(event.file_path, extraGlobs)) {
+        excludedEventIds.push(event.id);
+        affectedDates.add(
+          new Date(event.timestamp).toISOString().split("T")[0],
+        );
+      }
+    }
+    const eventsDeleted = await this.db.deleteEventsByIds(excludedEventIds);
+
+    const reviews = await this.db.getAllFileReviewPaths();
+    const excludedReviewIds: number[] = [];
+    for (const review of reviews) {
+      if (isExcludedFile(review.file_path, extraGlobs)) {
+        excludedReviewIds.push(review.id);
+        affectedDates.add(review.date);
+      }
+    }
+    const fileReviewsDeleted =
+      await this.db.deleteFileReviewsByIds(excludedReviewIds);
+
+    const datesRecalculated: string[] = [];
+    for (const date of affectedDates) {
+      try {
+        await this.calculateDailyMetrics(date);
+        datesRecalculated.push(date);
+      } catch (error) {
+        console.error(
+          `[MetricsRepository] Failed to recalculate metrics for ${date}:`,
+          error,
+        );
+      }
+    }
+    this.invalidateCache();
+
+    return { eventsDeleted, fileReviewsDeleted, datesRecalculated };
+  }
+
+  /**
+   * Tamper-evidence: record a change to the user exclusion list.
+   */
+  async recordExclusionAudit(
+    timestamp: number,
+    globs: string[],
+    source: string,
+  ): Promise<void> {
+    await this.db.recordExclusionAudit(timestamp, globs, source);
+  }
+
+  /**
+   * Tamper-evidence: exclusion changes within a time window (for reports).
+   */
+  async getExclusionAudit(
+    since: number,
+    until: number,
+  ): Promise<
+    Array<{ id: number; timestamp: number; globs: string[]; source: string }>
+  > {
+    return await this.db.getExclusionAudit(since, until);
   }
 
   async getDailyMetrics(date: string): Promise<DailyMetrics | null> {

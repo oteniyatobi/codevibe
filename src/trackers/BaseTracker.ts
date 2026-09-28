@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { AITool, ITracker, TrackingEvent } from '../types';
+import { isExcludedFile } from '../utils/ExcludedPaths';
 
 export abstract class BaseTracker implements ITracker {
   protected disposables: vscode.Disposable[] = [];
@@ -133,6 +134,12 @@ export abstract class BaseTracker implements ITracker {
     // Skip internal CodePause files
     const filePath = document.uri.fsPath;
     if (filePath && filePath.includes('codepause-baselines.json')) {
+      return false;
+    }
+
+    // Hard-ignore generated/dependency directories (node_modules, venv, ...).
+    // These burst thousands of files on install and are never user-authored.
+    if (filePath && isExcludedFile(filePath)) {
       return false;
     }
 

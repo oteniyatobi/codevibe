@@ -14,7 +14,12 @@
  */
 
 import { createHash } from "crypto";
-import { Assignment, AssignmentMetrics, AssignmentReport } from "../types";
+import {
+  Assignment,
+  AssignmentMetrics,
+  AssignmentReport,
+  ExclusionAuditEntry,
+} from "../types";
 
 export interface GenerateReportOptions {
   studentIdentifier?: string;
@@ -22,6 +27,8 @@ export interface GenerateReportOptions {
   repoHeadCommit?: string;
   /** Injectable clock for deterministic tests. Defaults to Date.now(). */
   generatedAt?: number;
+  /** Exclusion audit entries inside the assignment window (tamper-evidence). */
+  exclusionAudit?: ExclusionAuditEntry[];
 }
 
 export class AssignmentReportGenerator {
@@ -96,6 +103,7 @@ export class AssignmentReportGenerator {
       generatedAt: options.generatedAt ?? Date.now(),
       metrics,
       policy: assignment.policy,
+      exclusionAudit: options.exclusionAudit ?? [],
       ...(options.studentIdentifier !== undefined
         ? { studentIdentifier: options.studentIdentifier }
         : {}),

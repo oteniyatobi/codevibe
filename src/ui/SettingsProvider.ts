@@ -116,6 +116,7 @@ export class SettingsProvider {
         cursor: true,
         claudeCode: true
       },
+      excludedGlobs: [],
       onboardingCompleted: true
     };
 

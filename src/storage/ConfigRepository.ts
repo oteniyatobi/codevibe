@@ -68,6 +68,17 @@ export class ConfigRepository {
     return updatedConfig;
   }
 
+  /**
+   * Tamper-evidence: record a change to the user exclusion list.
+   */
+  async recordExclusionAudit(
+    timestamp: number,
+    globs: string[],
+    source: string,
+  ): Promise<void> {
+    await this.db.recordExclusionAudit(timestamp, globs, source);
+  }
+
   private getDefaultConfig(): UserConfig {
     return {
       experienceLevel: DeveloperLevel.Mid,
@@ -80,6 +91,8 @@ export class ConfigRepository {
         cursor: true,   // Enabled by default - track most of AI tools
         claudeCode: true // Enabled by default - track most of AI tools
       },
+      // Built-in generated-dir ignores always apply; this holds user extras.
+      excludedGlobs: [],
       onboardingCompleted: false
     };
   }

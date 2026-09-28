@@ -9,6 +9,7 @@ import {
   AssignmentPolicy,
   AIDetectionMethod
 } from '../types';
+import { DEFAULT_EXCLUDED_GLOBS } from '../utils/ExcludedPaths';
 
 export interface CreateAssignmentInput {
   id?: string;
@@ -52,7 +53,14 @@ export class AssignmentManager {
    */
   async activateAssignment(id: string): Promise<Assignment | null> {
     await this.metricsRepo.setActiveAssignment(id);
-    return await this.metricsRepo.getAssignment(id);
+    const assignment = await this.metricsRepo.getAssignment(id);
+    // Tamper-evidence marker: brackets the lockdown window in the audit trail
+    try {
+      await this.metricsRepo.recordExclusionAudit(Date.now(), [], 'assignment-activated');
+    } catch {
+      // Audit is best-effort; activation must not fail because of it
+    }
+    return assignment;
   }
 
   /**
@@ -60,6 +68,11 @@ export class AssignmentManager {
    */
   async deactivateAssignment(): Promise<void> {
     await this.metricsRepo.setActiveAssignment(null);
+    try {
+      await this.metricsRepo.recordExclusionAudit(Date.now(), [], 'assignment-deactivated');
+    } catch {
+      // Audit is best-effort; deactivation must not fail because of it
+    }
   }
 
   /**
@@ -140,7 +153,10 @@ export class AssignmentManager {
         '**/LICENSE*',
         '**/tsconfig.json',
         '**/.eslintrc*',
-        '**/.prettierrc*'
+        '**/.prettierrc*',
+        // Generated/dependency dirs are hard-ignored at collection time;
+        // listing them here too filters pre-existing events from reports.
+        ...DEFAULT_EXCLUDED_GLOBS
       ],
       prohibitedMethods: [
         AIDetectionMethod.ExternalFileChange,

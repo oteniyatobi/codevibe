@@ -1,20 +1,31 @@
 import * as vscode from 'vscode';
 import { DatabaseManager } from './DatabaseManager';
+import { MetricsRepository } from './MetricsRepository';
 
 /**
  * Manages data retention policies based on user tier
  * - Free tier: 30 days rolling window (auto-delete older data)
  * - Pro/Team tier: Unlimited history (no deletion)
+ *
+ * Also purges historical false positives from generated/dependency paths
+ * (node_modules, venv, build outputs) on every cleanup run, for all tiers.
+ * This is a correctness fix, not retention: those rows were never valid data.
  */
 export class DataRetentionManager {
   private static readonly FREE_TIER_RETENTION_DAYS = 30;
   private context: vscode.ExtensionContext;
   private dbManager: DatabaseManager;
+  private metricsRepo: MetricsRepository;
   private cleanupTimer?: NodeJS.Timeout;
 
-  constructor(context: vscode.ExtensionContext, dbManager: DatabaseManager) {
+  constructor(
+    context: vscode.ExtensionContext,
+    dbManager: DatabaseManager,
+    metricsRepo?: MetricsRepository,
+  ) {
     this.context = context;
     this.dbManager = dbManager;
+    this.metricsRepo = metricsRepo ?? new MetricsRepository(dbManager);
   }
 
   /**
@@ -54,15 +65,36 @@ export class DataRetentionManager {
   }
 
   /**
-   * Perform data cleanup based on user tier
+   * Perform data cleanup based on user tier.
+   * Excluded-path purge runs for ALL tiers (correctness, not retention).
    */
   async performCleanup(): Promise<void> {
+    await this.purgeExcludedEvents();
+
     const tier = this.getUserTier();
 
     if (tier === 'free') {
       await this.cleanupFreeUserData();
     }
     // Pro/Team users keep all data
+  }
+
+  /**
+   * Delete historical false positives from generated/dependency paths and
+   * recalculate affected daily metrics. Safe to run repeatedly (idempotent:
+   * once purged, no matching rows remain).
+   */
+  async purgeExcludedEvents(): Promise<{
+    eventsDeleted: number;
+    fileReviewsDeleted: number;
+    datesRecalculated: string[];
+  }> {
+    try {
+      return await this.metricsRepo.purgeExcludedEvents();
+    } catch (error) {
+      console.error('[DataRetention] Excluded-path purge failed:', error);
+      return { eventsDeleted: 0, fileReviewsDeleted: 0, datesRecalculated: [] };
+    }
   }
 
   /**

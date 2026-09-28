@@ -894,6 +894,37 @@ function registerCommands(context: vscode.ExtensionContext): void {
     },
   );
 
+  // Purge historical false positives from generated/dependency paths
+  // (node_modules, venv, build outputs recorded before the ignore list).
+  const purgeExcludedData = vscode.commands.registerCommand(
+    "codePause.purgeExcludedData",
+    async () => {
+      if (!metricsRepository) {
+        vscode.window.showErrorMessage("CodeVibe is not initialized");
+        return;
+      }
+
+      try {
+        const result = await metricsRepository.purgeExcludedEvents();
+
+        if (dashboardProvider) {
+          await dashboardProvider.refresh(true);
+        }
+        if (statusBarManager) {
+          await statusBarManager.refresh();
+        }
+
+        vscode.window.showInformationMessage(
+          `Excluded-path purge complete: removed ${result.eventsDeleted} event(s) and ${result.fileReviewsDeleted} file review(s) across ${result.datesRecalculated.length} day(s).`,
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Purge failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        );
+      }
+    },
+  );
+
   const showStats = vscode.commands.registerCommand(
     "codePause.showStats",
     async () => {
@@ -1295,6 +1326,26 @@ function registerCommands(context: vscode.ExtensionContext): void {
         fileReviews,
       );
 
+      // Tamper-evidence: embed exclusion-list changes inside the window.
+      // Custom globs are ignored while the assignment is active (lockdown),
+      // so these entries document attempts, sealed by the integrity hash.
+      let exclusionAudit: Array<{
+        timestamp: number;
+        globs: string[];
+        source: string;
+      }> = [];
+      try {
+        const windowStart = new Date(assignment.startDate).getTime();
+        const windowEnd =
+          new Date(assignment.endDate).getTime() + 86400000 - 1;
+        exclusionAudit = await metricsRepository.getExclusionAudit(
+          windowStart,
+          windowEnd,
+        );
+      } catch {
+        // Audit is best-effort; the report is still valid without it
+      }
+
       const report = new AssignmentReportGenerator().generate(
         assignment,
         metrics,
@@ -1302,6 +1353,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
           studentIdentifier: studentIdentifier.trim() || undefined,
           repoUrl: assignment.repoUrl,
           repoHeadCommit,
+          exclusionAudit,
         },
       );
 
@@ -1622,6 +1674,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
     showStats,
     showDatabaseInfo,
     cleanupOldData,
+    purgeExcludedData,
     refreshDashboard,
     diagnoseAlerts,
     showProgression,

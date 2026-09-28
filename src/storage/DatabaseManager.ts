@@ -568,6 +568,15 @@ export class DatabaseManager implements IDatabaseManager {
       )
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS exclusion_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp INTEGER NOT NULL,
+        globs_json TEXT NOT NULL,
+        source TEXT NOT NULL
+      )
+    `);
+
     // Migrate existing tables: Add new columns to events table
     this.safeAddColumn("events", "review_quality", "TEXT");
     this.safeAddColumn("events", "review_quality_score", "REAL");
@@ -1417,6 +1426,212 @@ export class DatabaseManager implements IDatabaseManager {
     this.sync();
 
     return deletedCount.deleted;
+  }
+
+  /**
+   * Record a change to the user-supplied exclusion list (tamper-evidence).
+   * Written whenever `codePause.excludedGlobs` changes and when assignments
+   * are activated/deactivated, so assignment reports can show exactly what
+   * was ignored during the assignment window.
+   */
+  async recordExclusionAudit(
+    timestamp: number,
+    globs: string[],
+    source: string,
+  ): Promise<void> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(
+      "INSERT INTO exclusion_audit (timestamp, globs_json, source) VALUES (?, ?, ?)",
+    );
+    stmt.bind([timestamp, JSON.stringify(globs), source]);
+    stmt.step();
+    stmt.free();
+    this.incrementOperations();
+  }
+
+  /**
+   * Get exclusion audit entries within [since, until].
+   */
+  async getExclusionAudit(
+    since: number,
+    until: number,
+  ): Promise<
+    Array<{ id: number; timestamp: number; globs: string[]; source: string }>
+  > {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(
+      "SELECT id, timestamp, globs_json, source FROM exclusion_audit WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC",
+    );
+    stmt.bind([since, until]);
+
+    const rows: Array<{
+      id: number;
+      timestamp: number;
+      globs: string[];
+      source: string;
+    }> = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as unknown as {
+        id: number;
+        timestamp: number;
+        globs_json: string;
+        source: string;
+      };
+      let globs: string[] = [];
+      try {
+        const parsed: unknown = JSON.parse(row.globs_json);
+        if (Array.isArray(parsed)) {
+          globs = parsed.filter((g): g is string => typeof g === "string");
+        }
+      } catch {
+        // Corrupt row - surface as empty rather than failing the report
+      }
+      rows.push({
+        id: row.id,
+        timestamp: row.timestamp,
+        globs,
+        source: row.source,
+      });
+    }
+    stmt.free();
+
+    return rows;
+  }
+
+  /**
+   * Lightweight scan of all events for purge operations.
+   * Returns only id/path/timestamp so large databases can be filtered in JS
+   * with ExcludedPaths.isExcludedFile (SQL LIKE cannot do segment matching).
+   */
+  async getAllEventPaths(): Promise<
+    Array<{ id: number; file_path: string | null; timestamp: number }>
+  > {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(
+      "SELECT id, file_path, timestamp FROM events",
+    );
+    const rows: Array<{ id: number; file_path: string | null; timestamp: number }> = [];
+    while (stmt.step()) {
+      rows.push(
+        stmt.getAsObject() as unknown as {
+          id: number;
+          file_path: string | null;
+          timestamp: number;
+        },
+      );
+    }
+    stmt.free();
+
+    return rows;
+  }
+
+  /**
+   * Delete events by id in chunks (SQLite limits bound variables).
+   * @returns Number of deleted records
+   */
+  async deleteEventsByIds(ids: number[]): Promise<number> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const placeholders = chunk.map(() => "?").join(",");
+      const stmt = this.db.prepare(
+        `DELETE FROM events WHERE id IN (${placeholders})`,
+      );
+      stmt.bind(chunk);
+      stmt.step();
+      stmt.free();
+
+      const changesStmt = this.db.prepare("SELECT changes() as deleted");
+      if (changesStmt.step()) {
+        deleted += (changesStmt.getAsObject() as { deleted: number }).deleted;
+      }
+      changesStmt.free();
+    }
+
+    this.incrementOperations();
+    this.sync();
+
+    return deleted;
+  }
+
+  /**
+   * Lightweight scan of all file review rows for purge operations.
+   */
+  async getAllFileReviewPaths(): Promise<
+    Array<{ id: number; file_path: string; date: string }>
+  > {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+
+    const stmt = this.db.prepare(
+      "SELECT id, file_path, date FROM file_review_status",
+    );
+    const rows: Array<{ id: number; file_path: string; date: string }> = [];
+    while (stmt.step()) {
+      rows.push(
+        stmt.getAsObject() as unknown as {
+          id: number;
+          file_path: string;
+          date: string;
+        },
+      );
+    }
+    stmt.free();
+
+    return rows;
+  }
+
+  /**
+   * Delete file review rows by id in chunks.
+   * @returns Number of deleted records
+   */
+  async deleteFileReviewsByIds(ids: number[]): Promise<number> {
+    if (!this.db) {
+      throw new Error("Database not initialized");
+    }
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    let deleted = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const placeholders = chunk.map(() => "?").join(",");
+      const stmt = this.db.prepare(
+        `DELETE FROM file_review_status WHERE id IN (${placeholders})`,
+      );
+      stmt.bind(chunk);
+      stmt.step();
+      stmt.free();
+
+      const changesStmt = this.db.prepare("SELECT changes() as deleted");
+      if (changesStmt.step()) {
+        deleted += (changesStmt.getAsObject() as { deleted: number }).deleted;
+      }
+      changesStmt.free();
+    }
+
+    this.incrementOperations();
+    this.sync();
+
+    return deleted;
   }
 
   /**

@@ -15,6 +15,7 @@ import { EventDeduplicator } from '../tracking/EventDeduplicator';
 import { TelemetryService } from '../telemetry/TelemetryService';
 import { AssignmentManager } from '../assignments/AssignmentManager';
 import { PolicyEngine } from '../assignments/PolicyEngine';
+import { isExcludedFile, sanitizeCustomExclusions } from '../utils/ExcludedPaths';
 import {
   TrackingEvent,
   PendingSuggestion,
@@ -199,6 +200,8 @@ export class MetricsCollector implements IMetricsCollector {
   private async initializeTrackers(): Promise<void> {
     // Initialize UnifiedAITracker (monitors all AI code generation)
     this.unifiedAITracker = new UnifiedAITracker((event: unknown) => this.handleEvent(event as TrackingEvent));
+    // Forward effective extra exclusions (built-in ignores always apply)
+    this.unifiedAITracker.setCustomExclusions(this.getEffectiveExcludedGlobs());
     await this.unifiedAITracker.initialize();
 
     // Initialize Manual Code tracker (always enabled)
@@ -282,7 +285,36 @@ export class MetricsCollector implements IMetricsCollector {
     }
   }
 
+  /**
+   * Effective user-supplied extra exclusion globs.
+   *
+   * ANTI-EVASION LOCKDOWN: while an assignment is active, student-supplied
+   * custom globs are IGNORED entirely (returns []). Only the built-in
+   * generated-dir list and the instructor's policy.exemptFileGlobs apply, so
+   * a student cannot hide source folders via settings to evade detection.
+   * Outside assignments, customs apply after sanitization (universe patterns
+   * like `**` are rejected).
+   */
+  getEffectiveExcludedGlobs(): string[] {
+    if (this.activeAssignment) {
+      return [];
+    }
+    try {
+      return sanitizeCustomExclusions(this.configManager.getConfig().excludedGlobs);
+    } catch {
+      return [];
+    }
+  }
+
   private handleEvent(event: TrackingEvent): void {
+    // Hard-ignore generated/dependency paths (node_modules, venv, build
+    // outputs). Defensive layer: trackers already filter, but direct
+    // recordEvent() calls and restored state must not pollute metrics.
+    // During an active assignment, student custom globs are locked out.
+    if (event.filePath && isExcludedFile(event.filePath, this.getEffectiveExcludedGlobs())) {
+      return;
+    }
+
     // Event deduplication - prevents double-counting
     if (this.eventDeduplicator.isDuplicate(event)) {
       return;
@@ -856,6 +888,9 @@ export class MetricsCollector implements IMetricsCollector {
 
   async refreshActiveAssignment(): Promise<Assignment | null> {
     this.activeAssignment = await this.assignmentManager.getActiveAssignment();
+    // Lockdown state may have changed (assignment activated/deactivated) -
+    // re-push effective exclusions to the tracker.
+    this.unifiedAITracker?.setCustomExclusions(this.getEffectiveExcludedGlobs());
     return this.activeAssignment;
   }
 }
