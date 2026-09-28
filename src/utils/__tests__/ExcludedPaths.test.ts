@@ -5,6 +5,8 @@
 import {
   isExcludedFile,
   isExcludedBySegment,
+  isLockfile,
+  isPackageManagerManifestFile,
   matchExclusionGlob,
   DEFAULT_EXCLUDED_GLOBS,
   validateCustomExclusions,
@@ -123,6 +125,64 @@ describe('ExcludedPaths', () => {
       ]) {
         expect(globs).toContain(expected);
       }
+    });
+
+    it('covers package-manager lockfiles', () => {
+      const globs = [...DEFAULT_EXCLUDED_GLOBS];
+      for (const expected of [
+        '**/package-lock.json',
+        '**/yarn.lock',
+        '**/pnpm-lock.yaml',
+        '**/poetry.lock',
+        '**/Pipfile.lock',
+        '**/Gemfile.lock',
+        '**/Cargo.lock',
+        '**/composer.lock',
+        '**/go.sum',
+      ]) {
+        expect(globs).toContain(expected);
+      }
+    });
+  });
+
+  describe('lockfiles (npm/pip/cargo/go writes, not AI)', () => {
+    it.each([
+      '/proj/package-lock.json',
+      '/proj/yarn.lock',
+      '/proj/pnpm-lock.yaml',
+      '/proj/poetry.lock',
+      '/proj/Pipfile.lock',
+      '/proj/Gemfile.lock',
+      '/proj/Cargo.lock',
+      '/proj/composer.lock',
+      '/proj/go.sum',
+      'C:\\proj\\package-lock.json',
+    ])('hard-ignores %s', (p) => {
+      expect(isLockfile(p)).toBe(true);
+      expect(isExcludedFile(p)).toBe(true);
+    });
+
+    it('does not mistake source files for lockfiles', () => {
+      expect(isLockfile('/proj/src/app.ts')).toBe(false);
+      expect(isLockfile('/proj/package.json')).toBe(false);
+      expect(isLockfile('/proj/lockfile-helper.ts')).toBe(false);
+    });
+  });
+
+  describe('package.json manifest (npm rewrites it externally)', () => {
+    it('is detected as a package-manager manifest', () => {
+      expect(isPackageManagerManifestFile('/proj/package.json')).toBe(true);
+      expect(isPackageManagerManifestFile('C:\\proj\\package.json')).toBe(true);
+    });
+
+    it('is NOT hard-ignored (in-editor edits still tracked)', () => {
+      expect(isExcludedFile('/proj/package.json')).toBe(false);
+    });
+
+    it('rejects non-manifests', () => {
+      expect(isPackageManagerManifestFile('/proj/package-lock.json')).toBe(false);
+      expect(isPackageManagerManifestFile('/proj/src/app.ts')).toBe(false);
+      expect(isPackageManagerManifestFile(undefined)).toBe(false);
     });
   });
 

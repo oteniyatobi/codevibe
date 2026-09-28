@@ -96,6 +96,7 @@ describe("Excluded-path purge", () => {
     await dbManager.insertEvent(
       makeEvent("/proj/.venv/lib/site-packages/numpy/core.py", 500),
     );
+    await dbManager.insertEvent(makeEvent("/proj/package-lock.json", 800));
     await dbManager.insertEvent(makeEvent("/proj/src/app.ts", 10));
     await dbManager.insertOrUpdateFileReviewStatus(
       makeReview("/proj/node_modules/lodash/lodash.js", 1000),
@@ -106,7 +107,7 @@ describe("Excluded-path purge", () => {
 
     const result = await metricsRepo.purgeExcludedEvents();
 
-    expect(result.eventsDeleted).toBe(2);
+    expect(result.eventsDeleted).toBe(3);
     expect(result.fileReviewsDeleted).toBe(1);
     expect(result.datesRecalculated).toContain(today);
 

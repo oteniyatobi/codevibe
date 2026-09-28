@@ -11,7 +11,7 @@ import * as path from 'path';
 import { BaseTracker } from './BaseTracker';
 import { AIDetector } from '../detection/AIDetector';
 import { EventType, CodeSource, AIClassification } from '../types';
-import { isExcludedFile } from '../utils/ExcludedPaths';
+import { isExcludedFile, isPackageManagerManifestFile } from '../utils/ExcludedPaths';
 
 export class UnifiedAITracker extends BaseTracker {
   private aiDetector: AIDetector;
@@ -641,6 +641,24 @@ export class UnifiedAITracker extends BaseTracker {
     // Defensive re-check (handleFileChange already filters, but file
     // creation and debounced retries route through here too).
     if (this.isExcluded(filePath)) {
+      return;
+    }
+
+    // npm rewrites package.json on disk for `npm install <pkg>` / `npm
+    // update` while the file is closed. That is the package manager, not AI
+    // agent mode - skip the event. The baseline is still advanced so later
+    // deltas stay correct. In-editor edits to package.json keep flowing
+    // through text-change detection (manual typing, AI pastes).
+    if (isPackageManagerManifestFile(filePath)) {
+      this.log(`[PROCESS-CHANGE] SKIPPED - package-manager manifest write, not AI: ${fileName}`);
+      try {
+        const document = await vscode.workspace.openTextDocument(uri);
+        this.fileBaselines.set(filePath, this.countLines(document.getText()));
+        this.savePersistedBaselines();
+      } catch {
+        // Best-effort baseline advance; a stale baseline here only affects
+        // future external package.json writes, which are skipped anyway
+      }
       return;
     }
 
