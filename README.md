@@ -1,243 +1,399 @@
 <div align="center">
-  <img src="resources/codepause-icon.png" width="84" alt="CodeVibe">
+  <img src="resources/codepause-icon.png" width="76" alt="CodeVibe">
   <h1 style="margin-bottom:0">CodeVibe</h1>
   <p><strong>Write it. Review it. Prove it.</strong><br>
-  <span style="opacity:.7">VS Code extension + standalone verifier for AI-assisted coding — in class and in production</span></p>
+  <span style="opacity:.72">A VS Code extension that tracks AI-assisted coding, plus a standalone verifier that proves a report wasn't edited.</span></p>
 
   <p>
-    <a href="https://marketplace.visualstudio.com/items?itemName=codepause.codevibe-verify"><img src="https://img.shields.io/badge/marketplace-CodeVibe%200.1.7-0a0a0a?style=flat-square&labelColor=0a0a0a&color=00d084" alt="Marketplace"></a>
-    <a href="https://www.npmjs.com/package/codevibe-verify"><img src="https://img.shields.io/badge/npm-codevibe--verify-CB3837?style=flat-square&logo=npm" alt="npm"></a>
-    <img src="https://img.shields.io/badge/VS_Code-1.85%2B-007ACC?style=flat-square&logo=visual-studio-code" alt="VS Code">
-    <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js" alt="Node">
-    <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-BSL_1.1-EEEEEE?style=flat-square&labelColor=0a0a0a&color=EEEEEE" alt="License"></a>
+    <img src="https://img.shields.io/badge/version-0.1.9-0a0a0a?style=flat-square&labelColor=0a0a0a&color=00d084" alt="Version 0.1.9">
+    <img src="https://img.shields.io/badge/VS_Code-1.85%2B-007ACC?style=flat-square&logo=visual-studio-code" alt="VS Code 1.85+">
+    <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js" alt="Node 20+">
+    <img src="https://img.shields.io/badge/tests-1763%20passing-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3fb950" alt="1763 tests passing">
+    <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-Business%20Source%201.1-EEEEEE?style=flat-square&labelColor=0a0a0a&color=EEEEEE" alt="License"></a>
   </p>
 </div>
 
 ```
-$ code .                    # open your repo
-$ # ... code with Copilot / Cursor / Claude ...
+$ code .
+$ # ... work as usual with Copilot / Cursor / Claude Code ...
 
-$ npx codevibe-verify reports/hw3.report.json
+$ node codevibe-verify.js hw3.report.json
 
 ✔ hw3.report.json — INTEGRITY OK — COMPLIANCE PASS
-  Assignment: HW3 - Binary Trees (asgn-hw3) | Student: you@uni.edu | 2026-09-21T15:18:03Z
-  Authorship: 18.4% AI (limit 30%)  ✓ PASS — 12 permitted + 0 prohibited
-  Ownership:  92.0 /100 (min 40)      ✓ PASS — 3 reviewed, 0 unreviewed
+  Assignment: HW3 - Binary Search Trees (asgn-hw3-2026) | Student: student-042
+  Authorship: 18.4% AI (limit 30%)  ✓ PASS — 52 permitted + 0 prohibited + 12 flagged
+  Ownership:  92.0 /100 (min 40)    ✓ PASS — 4 reviewed, 0 unreviewed
   Violations: 0 — none
 
-────────────────────────────────────────────────────────────
-Summary: 1 file — 1 integrity OK — 1 compliant
+Summary: 1 file — 1 integrity OK, 0 FAIL — 1 compliant, 0 non-compliant
 Result: All reports authentic and compliant.
 ```
 
-One extension. One hash. No hand-waving about who wrote what.
+One hash. If it matches, the numbers weren't changed after export.
 
 ---
 
-## What this is
+## Why this exists
 
-**CodeVibe tracks AI vs. human code where you write it — in VS Code — and gives you a signed report you can hand in.**
+Writing code with AI is normal. Writing code you can't explain is the problem.
 
-- For **students**: see in real time how much of your assignment is AI, whether you actually reviewed it, and export a `*.report.json` with a `sha256` integrity seal.
-- For **teachers**: run `codevibe-verify` offline, without VS Code, to confirm the report wasn’t edited and see at a glance if policy passed. No network, no trust-me server.
-- For **teams**: same dashboard without the assignment layer — keep AI useful without losing the ability to read your own diff.
+Most AI trackers answer "how much of this is AI?" CodeVibe answers the harder question — **did you actually read it?** — and then gives you a signed artifact so the answer survives outside your laptop.
 
-It is not a linter, not a grader, not a spy. All data stays in `~/.codepause/` as local SQLite (`sql.js` WASM). No code leaves the machine.
-
----
-
-## The ledger, not the lecture
-
-Most AI trackers lecture you. CodeVibe keeps a ledger.
-
-| What we count | Where it lives | What you do with it |
+| It measures | Where it appears | How it's judged |
 |---|---|---|
-| **Authorship** — `AI lines / total lines` per day & per assignment | Dashboard “AI authorship” meter + `report.metrics.authorship` | Stay under `policy.maxAuthorshipPercentage` (e.g. 30%) |
-| **Ownership** — `0–100` review score from time-in-focus, scrolling, cursor, edits | Dashboard “Ownership” meter + `report.metrics.ownership` | Stay above `policy.minOwnershipScore` (e.g. 40) |
-| **Policy violations** — `agentic-use`, `authorship-exceeded`, `ownership-below-minimum`, `unreviewed-large-paste`, `tracking-gap` | Dashboard policy panel + `report.metrics.violations[]` | Zero `high`/`medium` for compliance |
-| **Integrity** — `sha256(canonical(report − integrity − generatedAt))` | `report.integrity.hash` | `codevibe-verify` recomputes and compares with `timingSafeEqual` |
+| **Authorship** — AI lines ÷ total lines | Dashboard meter, `report.metrics.authorship` | Must stay under `maxAuthorshipPercentage` |
+| **Ownership** — 0–100 from real review signals | Dashboard meter, `report.metrics.ownership` | Must stay above `minOwnershipScore` |
+| **Violations** — agentic use, exceeded authorship, unreviewed pastes, tracking gaps | Dashboard panel, `report.metrics.violations[]` | Zero for a clean report |
+| **Integrity** — `sha256` over the canonical report | `report.integrity.hash` | Recomputed and compared by `codevibe-verify` |
 
-If the hash matches, the numbers weren’t edited after export. `generatedAt` is *not* signed, so re-exporting the same data gives the same hash.
+`generatedAt` is deliberately **not** signed, so re-exporting unchanged data produces an identical hash. Editing any metric after export breaks it.
 
----
+### What this is not
 
-## Dashboard
+Not a linter. Not a grader. Not a liveness detector.
 
-<div align="center">
-  <img src="./docs/screenshots/dashboard-overview.png" width="640" alt="CodeVibe dashboard with authorship, ownership, violations">
-  <p><em>Assignment panel: name, dates, two meters with policy ticks, violation list with severity border — the same data that goes into the report.</em></p>
-</div>
-
-- **Three cards:** `Authorship` (today) + `Ownership` (today) + `Skill Health` (7-day trend). Not gamification — just `Excellent / Good / Needs Attention`.
-- **Weekly trend, tool breakdown, session stats** collapsed by default.
-- **Assignment panel** (when active): course, repo link, meters, `Policy violations` stack, `Export report for submission`.
+It cannot tell you whether a student disabled the extension, edited the database, or pasted in a report someone else produced. It **detects tampering after the fact** and makes gaps visible. Any tool a student controls is ultimately trust-based — the honest position is that this raises the cost of cheating, it does not abolish it.
 
 ---
 
-## Assignment workflow
+## For Students
 
-### Student (in VS Code)
+**Time required: about two minutes of setup.**
 
-1. **Create / activate** — `Cmd+Shift+P` → `CodeVibe: Create Assignment` → name, `YYYY-MM-DD` start/end, `maxAuthorship%`, `minOwnership`. Or `CodeVibe: Activate Assignment` to switch.
-2. **Code** — use Copilot / Cursor / Claude Code as usual. CodeVibe buffers events, aggregates every 5 min, debounces dashboard refresh (60s).
-3. **Review** — open AI-generated files, scroll, move cursor, edit. Score `≥70` = thorough, `40–69` = light. Dashboard shows `Files needing review`.
-4. **Export** — dashboard `Export report for submission` or `CodeVibe: Export Assignment Report` → pick save location, optionally enter `studentIdentifier`, `repoHeadCommit` is auto-captured via `git rev-parse HEAD`. You get `hw3.report.json`:
-   ```json
-   {
-     "reportVersion": "1.0",
-     "assignmentId": "asgn-hw3-...",
-     "assignmentName": "HW3 - Binary Trees",
-     "generatedAt": 1726920000000,
-     "studentIdentifier": "you@uni.edu",
-     "repoHeadCommit": "abc123d…",
-     "metrics": { "authorship": {...}, "ownership": {...}, "violations": [] },
-     "policy": { "maxAuthorshipPercentage": 30, "minOwnershipScore": 40, ... },
-     "integrity": { "algorithm": "sha256", "hash": "a57f46b…" }
-   }
-   ```
+### 1. Install the extension
 
-### Teacher / reviewer (no VS Code needed)
+CodeVibe isn't on the Marketplace or npm yet. Grab the `.vsix` from the [latest release](https://github.com/waka-man/codevibe/releases/latest):
 
 ```bash
-# One file
-npx codevibe-verify hw3.report.json
-
-# Many files, strict compliance, machine output for CI
-npx codevibe-verify reports/*.report.json --strict --json | jq
-
-# Piped
-cat hw3.report.json | npx codevibe-verify -
-
-# Also available as alias
-npx verify-assignment-report hw3.report.json
+# Download codevibe-extension-<version>.vsix from the releases page, then:
+code --install-extension codevibe-extension-0.1.9.vsix
 ```
 
-**Output is two checks at once** — `INTEGRITY` and `COMPLIANCE`:
+Or in VS Code: `Cmd/Ctrl+Shift+X` → gear menu → **Install from VSIX…**
+
+### 2. Tell it your experience level
+
+On first launch, CodeVibe asks whether you're a junior, mid, or senior developer. This sets your daily AI-usage target and how strict the review coaching is. You can change it any time with `CodeVibe: Change Experience Level`.
+
+### 3. If your course uses assignments, create one
+
+Ask your instructor for the assignment name, dates, and policy limits, then:
+
+`Cmd/Ctrl+Shift+P` → **CodeVibe: Create Assignment**
+
+Students don't set the policy — instructors give you the limits. The command is here so the report is correctly scoped to your course.
+
+### 4. Work normally
+
+Nothing to configure. Use your AI tools as usual.
+
+When an AI agent writes code for you, open the file and **actually read it** — scroll through it, move through it, edit it. That interaction is the entire ownership signal. Opening a file and leaving it idle counts for nothing, by design.
+
+If you have files to review, the dashboard's `Ownership` card lists them. Scores land in bands: **70+** thorough, **40–69** light, below that unreviewed.
+
+### 5. Export before you submit
+
+**CodeVibe: Export Assignment Report** → pick a location. Optionally enter your student ID so the report is attributable.
+
+Do this as your **last step** before submitting. Any code change after export makes the report stale, and re-exporting is how you fix that (the hash is stable across re-exports of the same data, so there's no penalty for exporting twice).
+
+### 6. Put the report where your instructor asked
+
+The export is a single `*.report.json` file. Submit it alongside your work.
+
+### What gets stored, and where
+
+Everything lives in `~/.codepause/`, one SQLite database per project. No code content, ever — only line counts, timestamps, scores, and file paths. Deleting the folder deletes the record; `CodeVibe: Clear All Data` does it for you.
+
+File paths are anonymized by default (`codePause.anonymizePaths`): stored as `src/auth/login.ts` rather than `/Users/yourname/...`. Existing data is migrated on first launch after upgrading.
+
+### Student FAQ
+
+**Does using AI hurt my grade automatically?**
+No. CodeVibe reports numbers; it doesn't decide outcomes. A report showing 25% AI under a 30% limit *passes* — show it to your instructor.
+
+**Can I turn off the nagging notifications?**
+Yes: `CodeVibe: Snooze Alerts for Today`, or set `codePause.alertFrequency` to `low`.
+
+**I'm not using this for a class. Can I still use the dashboard?**
+Yes. Skip the assignment steps entirely. You get authorship, ownership, and skill-health tracking with no assignment layer, no reports, nothing to submit.
+
+**Why is `node_modules` not being counted?**
+Because you didn't write it. CodeVibe hard-ignores `node_modules`, Python environments, and build output, plus every lockfile. A single `npm install` used to register tens of thousands of "AI lines" and wreck your stats; that's fixed.
+
+**Can I exclude a folder I generate code into?**
+Yes: `codePause.excludedGlobs`. Add one glob per entry, e.g. `**/generated/**`. Note that these are **ignored entirely while an assignment is active** — see below.
+
+---
+
+## For Educators
+
+**Time required: about five minutes per student, or zero if you only verify.**
+
+### 1. Get the verifier
+
+The verifier is a single dependency-free Node file. Fetch it from the [latest release](https://github.com/waka-man/codevibe/releases/latest) as `codevibe-verify.js`:
+
+```bash
+node codevibe-verify.js hw3.report.json
+```
+
+No install, no network, no VS Code. It reads a report and prints two independent verdicts.
+
+### 2. Verify what you receive
 
 ```
 ✔ hw3.report.json — INTEGRITY OK — COMPLIANCE PASS
-  Assignment: HW3 - Binary Trees (asgn-hw3-...) | Student: you@uni.edu | 2026-09-21T15:18:03Z
   Authorship: 18.4% AI (limit 30%)  ✓ PASS
-  Ownership:  92.0 /100 (min 40)      ✓ PASS — 3 reviewed, 0 unreviewed
+  Ownership:  92.0 /100 (min 40)    ✓ PASS
   Violations: 0 — none
 
-✘ hw2.report.json — INTEGRITY FAIL — COMPLIANCE FAIL
+✘ hw2.report.json — INTEGRITY FAIL
   Stored:    a57f46b…
   Recomputed: ff5f44f…
   Reason: hash mismatch - the report has been modified after export
-
-────────────────────────────────────────────────────────────
-Summary: 2 files — 1 integrity OK, 1 FAIL — 1 compliant, 1 non-compliant
 ```
 
-`--strict` makes a compliant FAIL exit `1` (default: exit `1` only on integrity FAIL, `2` on usage/IO). `--verbose` prints each violation’s message, `--no-color` disables ANSI, `--quiet` suppresses per-file details.
+**Exit codes** — designed for CI and grade sheets:
 
-The verifier is a single `~20KB` Node file with zero deps (`fs` + `crypto` only). You can `curl -O` `scripts/verify-assignment-report.js` and run it offline. It re-implements `canonicalize` line-for-line from `src/assignments/AssignmentReportGenerator.ts:33` so a teacher doesn’t have to trust the extension that produced the report.
+| Code | Meaning |
+|---|---|
+| `0` | All reports authentic (and compliant, with `--strict`) |
+| `1` | Tampered report, malformed report, or non-compliance under `--strict` |
+| `2` | Usage or I/O error — wrong arguments, unreadable file |
 
----
-
-## Detection — 99.9% without config
-
-No per-tool setup. Five signals, highest confidence wins:
-
-1. **Inline Completion API** `high` — official VS Code API (Copilot, Cursor tab)
-2. **Large paste** `high` — `>100 chars`, code-shaped (braces/keywords/newlines)
-3. **External file change** `high` — file modified while closed (agent/composer)
-4. **Git commit marker** `absolute` — `Co-Authored-By: Claude`, `@claude-code`
-5. **Change velocity** `medium` — `>500 chars in <1s` (filtered if alone)
-
-Deduplication: `src/tracking/EventDeduplicator.ts:39` (`file:timestamp:lines:linesRemoved:chars`, 1s window). Review scoring: `src/core/FileReviewSessionTracker.ts:445` (`totalTimeInFocus` only if `scroll>=1` or `cursor>=5` or `editsMade`, 80 pts thorough, etc.).
-
-Language-aware: `src/core/ReviewQualityAnalyzer.ts` scales expected review time by complexity (`Rust 2.0×`, `C++ 1.8×`, `TS/JS 1.5×`, `Python/Go 1.4×` …).
-
----
-
-## Install
-
-**VS Code Marketplace** (extension ID `codepause.codevibe-verify`, display name `CodeVibe`):
-
-- VS Code → `Cmd+Shift+X` → search `CodeVibe` → Install
-- or `code --install-extension codevibe-verify-0.1.7.vsix`
-
-**From source:**
+### 3. Options that matter for grading
 
 ```bash
-git clone https://github.com/waka-man/codevibe.git
-cd codevibe
-npm install
-npm run compile          # tsc → out/
-npm test                 # 1438 tests
-npm link                 # gives you `codevibe-verify` + `verify-assignment-report` bins
-codevibe-verify --help
+node codevibe-verify.js reports/*.json --strict    # fail the run on non-compliance too
+node codevibe-verify.js reports/*.json --json      # machine-readable
+node codevibe-verify.js reports/*.json --verbose   # print each violation's message
+cat hw3.json | node codevibe-verify.js -           # stdin
 ```
 
-**Requirements:** VS Code `^1.85.0`, Node `>=20`, git repo recommended (falls back to baseline tracking with warning, `src/extension.ts:270`).
+By default, exit `1` means only *integrity* failed. A report can be perfectly authentic and still non-compliant, so add `--strict` if you want compliance to gate your pipeline.
+
+### 4. What you tell students
+
+Send them the **For Students** section above, plus these three things:
+
+1. **The policy numbers.** `maxAuthorshipPercentage` (e.g. 30) and `minOwnershipScore` (e.g. 40) must come from you. Students cannot set their own limits.
+2. **Where to submit** the `*.report.json`.
+3. **The grading rule**, stated in advance. Which of authorship, ownership, and violations actually affect the grade.
+
+### 5. What a student can't game
+
+Three mechanisms, in order of strength:
+
+**The integrity hash** covers every metric. Editing authorship after export breaks it, and the verifier says so.
+
+**Custom exclusions lock during assignments.** If a student adds `**/src/**` to `codePause.excludedGlobs` mid-assignment, the extension ignores it. The built-in ignore list and your policy's exemptions still apply.
+
+**Every exclusion change is logged.** The report embeds an `exclusionAudit` array — every settings change plus activation markers — sealed by the same hash. A student can't remove it without breaking the report.
+
+```
+Exclusion audit: 3 entries (1 student settings change, ignored by lockdown)
+```
+
+An attempt is *visible*. It isn't *prevented* — see "What this is not" above.
+
+### Educator FAQ
+
+**Can a student just delete the database?**
+Yes, and the absence of data is itself the signal: a student with no report where everyone else has one is the outlier. `tracking-gap` violations also flag long untracked stretches inside an active assignment window.
+
+**Do I need to trust the extension that produced the report?**
+No. The verifier re-implements the canonicalization and hashing independently of the extension. The two implementations are tested against each other, and you can read both.
+
+**What are the detection signals?**
+Inline completions, large pastes (>500 chars, code-shaped), files modified while closed (agent mode), AI attribution in git commits, and typing velocity. Details in [How detection works](#how-detection-works).
+
+**What about students working in a weird directory structure?**
+`excludedGlobs` handles it, except while an assignment is active. If a legitimate folder is being ignored, they can raise it with you — the audit trail shows exactly when and what.
+
+**Is the data private?**
+Local SQLite in `~/.codepause/`. No code content stored. Paths anonymized by default. Anonymous usage telemetry is on by default and can be turned off with `codePause.enableTelemetry` (see [Privacy](#privacy) — it deserves a read before you require this tool of students).
 
 ---
 
-## Quick start
+## How detection works
 
-1. **Level** — first launch asks `Junior / Mid / Senior` (sets `maxAIPercentage` 40/60/75 and `blindApprovalTime` 5s/3s/2s, `src/types/index.ts:981`). Change anytime: `CodeVibe: Change Experience Level`.
-2. **Open dashboard** — `Cmd+Shift+P` → `CodeVibe: Open Dashboard` or activity bar `CodeVibe`.
-3. **Code** — write as usual. Snooze: `CodeVibe: Snooze Alerts for Today`. Refresh: `CodeVibe: Refresh Dashboard` (force HTML regen + aggregation).
-4. **Export / Verify** — see assignment workflow above.
+Five signals. Highest confidence wins, per event.
+
+| # | Signal | Confidence | What it sees |
+|---|---|---|---|
+| 1 | Inline completion | `high` | Instantaneous multi-statement insertion, 25–300 chars |
+| 2 | Large paste | `high` | >500 chars containing real code structure |
+| 3 | External file change | `high` | File modified while closed — agent/composer mode |
+| 4 | Git commit marker | `high` | `Co-Authored-By: Claude`, `@claude-code`, `Generated with` |
+| 5 | Change velocity | `medium` | >500 chars/sec, **tracked per file** |
+
+A note on #5: typing fast in one file used to inflate the measured velocity of the next file you touched, flagging innocent keystrokes as AI. Velocity is now tracked independently per file.
+
+Review scoring is deliberately conservative about what counts as reading. Time only accrues once you interact — scroll at least once, move the cursor at least five times, or make a small edit. Opening a file and walking away contributes nothing. Expected review time scales with language complexity (Rust 2.0×, C++ 1.8×, TS/JS 1.5×, Python/Go 1.4×).
+
+### What is hard-ignored
+
+Never counted, at any layer — collection, aggregation, and reporting:
+
+- **Dependencies:** `node_modules`, `bower_components`, site-packages
+- **Python envs:** `venv`, `.venv`, `env`, `__pycache__`, `.tox`, `.mypy_cache`, `.pytest_cache`
+- **Build output:** `dist`, `build`, `out`, `coverage`, `.nyc_output`, `.next`, `target`, `vendor`
+- **VCS & IDE:** `.git`, `.hg`, `.svn`, `.idea`, `.vs`
+- **Lockfiles:** `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `poetry.lock`, `Cargo.lock`, `go.sum`, and others
+- **Generated files:** `*.min.js`, `*.bundle.js`, `*.map`, `*.pyc`
+
+`package.json` is the deliberate exception: it's skipped when npm rewrites it behind your back, but still tracked when you or an AI edit it in the editor.
+
+Historical data from before this list existed is purged automatically on startup and daily, with affected daily metrics recalculated. Force it with `CodeVibe: Purge Excluded-Path Data`.
+
+---
+
+## The report
+
+```json
+{
+  "reportVersion": "1.0",
+  "assignmentId": "asgn-hw3-2026",
+  "assignmentName": "HW3 - Binary Search Trees",
+  "generatedAt": 1790613483000,
+  "studentIdentifier": "student-042",
+  "repoUrl": "https://github.com/student/hw3",
+  "repoHeadCommit": "4f9c1a2e7b3d…",
+  "metrics": {
+    "authorship": {
+      "totalLines": 348, "manualLines": 284,
+      "permittedAILines": 52, "prohibitedAILines": 0, "flaggedAILines": 12,
+      "authorshipPercentage": 18.4, "prohibitedPercentage": 0
+    },
+    "ownership": {
+      "score": 92, "filesReviewed": 4, "filesUnreviewed": 0,
+      "unreviewedLines": 0, "averageReviewTimeMs": 18400
+    },
+    "violations": [],
+    "trackingGaps": []
+  },
+  "policy": {
+    "maxAuthorshipPercentage": 30,
+    "minOwnershipScore": 40,
+    "exemptFileGlobs": ["**/README*", "**/node_modules/**", "…"],
+    "prohibitedMethods": ["external-file-change", "git-commit-marker"],
+    "permittedMethods": ["inline-completion-api"],
+    "flaggedMethods": ["large-paste", "change-velocity"]
+  },
+  "exclusionAudit": [
+    { "timestamp": 1789484520000, "globs": [], "source": "assignment-activated" },
+    { "timestamp": 1790049060000, "globs": ["**/generated/**"], "source": "settings" }
+  ],
+  "integrity": { "algorithm": "sha256", "hash": "a57f46b…" }
+}
+```
+
+`exclusionAudit` is new. Entries sourced from `settings` record student attempts to add ignore rules; they have no effect during an active assignment.
+
+### Violation types
+
+| Type | Severity | Meaning |
+|---|---|---|
+| `agentic-use` | high | Files modified by an external agent, or AI commit markers |
+| `authorship-exceeded` | medium | AI authorship above `maxAuthorshipPercentage` |
+| `ownership-below-minimum` | medium | Review score below `minOwnershipScore` |
+| `unreviewed-large-paste` | medium | Large paste accepted with insufficient review time |
+| `tracking-gap` | low | No tracked activity for 30+ minutes inside the window |
 
 ---
 
 ## Commands
 
-| Command | What it does |
+The ones that matter:
+
+| Command | Purpose |
 |---|---|
-| `CodeVibe: Open Dashboard` | Reveal `codePause.dashboardView` + `refresh(true)` |
-| `CodeVibe: Refresh Dashboard` | `metricsCollector.triggerAggregation()` + dashboard/status bar refresh |
-| `CodeVibe: Create Assignment` | `AssignmentManager.ts:29` — new assignment with policy |
-| `CodeVibe: Activate Assignment` | `AssignmentManager.ts:53` — set active assignment |
-| `CodeVibe: Deactivate Assignment` | `AssignmentManager.ts:61` — clear active assignment |
-| `CodeVibe: Export Assignment Report` | `AssignmentReportGenerator.ts:87` → save `*.report.json` |
-| `CodeVibe: Show Assignment Status` | Modal with `authorship%`, `ownership`, violation list |
-| `CodeVibe: Change Experience Level` | Update `ThresholdManager.ts` + `ConfigRepository.ts` |
-| `CodeVibe: Clear All Data` | Deletes `~/.codepause/*.db` + `.vscode/codepause-baselines.json` |
-| `CodeVibe: Show Database Info` | `DatabaseManager.ts` stats |
+| `CodeVibe: Open Dashboard` | Open the sidebar dashboard |
+| `CodeVibe: Create / Activate / Deactivate Assignment` | Manage assignment scoping |
+| `CodeVibe: Export Assignment Report` | Write the `*.report.json` to submit |
+| `CodeVibe: Show Assignment Status` | Current numbers and violations |
+| `CodeVibe: Purge Excluded-Path Data` | Remove historical `node_modules`/venv rows |
+| `CodeVibe: Clear All Data` | Delete every database and baseline file |
+| `CodeVibe: Change Experience Level` | Junior / mid / senior thresholds |
+| `CodeVibe: Snooze Alerts for Today` | Silence coaching for the day |
+| `CodeVibe: Cleanup Old Data` | Enforce the 30-day retention window |
+
+<details>
+<summary>Everything else (~20 more)</summary>
+
+`Start Onboarding` · `Reset Onboarding (Debug)` · `Open Settings` · `Refresh Dashboard` · `Show Quick Stats` · `Show Database Info` · `Show Progression & Level` · `Show Achievements` · `Advanced Settings` · `Export Data` · `Import Data` · `Show Snooze Status` · `Force Full Scan` · `Reset Achievements` · `Check Thresholds` · `Test Notifications (Debug)`
+
+</details>
 
 ---
 
 ## Configuration
 
-`Cmd+,` → search `CodeVibe`:
+`Cmd/Ctrl+,` → search **CodeVibe**.
 
-- `codePause.experienceLevel` `junior|mid|senior` (`mid`)
-- `codePause.blindApprovalThreshold` `2000` ms
-- `codePause.alertFrequency` `low|medium|high` (`medium`)
-- `codePause.enableGamification` `false`
-
-Thresholds live in `src/core/ThresholdManager.ts`, alerts in `src/alerts/AlertEngine.ts:87`.
-
----
-
-## Development
-
-```
-npm run compile      # tsc -p ./
-npm run watch        # tsc --watch
-npm run lint         # eslint src --ext ts
-npm test             # jest --coverage (1438 tests, 42 suites)
-npx vsce package     # → codevibe-verify-0.1.7.vsix (includes out/ + node_modules/sql.js)
-```
-
-Structure: `src/storage` (SQLite `sql.js` WASM, `DatabaseManager.ts:135` wasm path), `src/core` (`MetricsCollector.ts` hub, `PolicyEngine.ts:82` violations), `src/trackers` (`UnifiedAITracker.ts`), `src/ui` (`DashboardHtml.ts:11` template literal), `src/cli/verify.ts` (standalone verifier), `src/assignments` (manager + generator).
+| Setting | Default | What it does |
+|---|---|---|
+| `codePause.experienceLevel` | `mid` | `junior` / `mid` / `senior` — sets daily AI target (40% / 60% / 75%) |
+| `codePause.blindApprovalThreshold` | `2000` | ms before a fast acceptance is flagged |
+| `codePause.alertFrequency` | `medium` | `low` / `medium` / `high` coaching interruptions |
+| `codePause.anonymizePaths` | `true` | Store workspace-relative paths, not absolute ones |
+| `codePause.enableTelemetry` | `true` | Anonymous usage stats — see [Privacy](#privacy) |
+| `codePause.enableGamification` | `false` | Achievements and progression |
+| `codePause.trackedTools` | all `true` | Which assistants to monitor |
+| `codePause.excludedGlobs` | `[]` | Extra ignore globs — **ignored during active assignments** |
 
 ---
 
 ## Privacy
 
-- `100%` local. SQLite files in `~/.codepause/` (workspace-specific `~/.codepause/<hash>.db`), no code content stored.
-- No code, prompts, or file contents ever leave the machine.
+Worth reading before you require this of students.
+
+- **Everything is local.** SQLite in `~/.codepause/`, one database per project.
+- **No code content is ever stored** — only line counts, timestamps, scores, and paths.
+- **Paths are anonymized by default.** `src/auth/login.ts`, not `/Users/yourname/…`. Upgrading migrates existing rows.
+- **Telemetry is on by default.** Anonymous events (extension version, platform, command names, error counts) go to `api.codepause.dev`. Any key containing `path`, `file`, `name`, `email`, or `user` is stripped before sending. Set `codePause.enableTelemetry` to `false` to stop it entirely — it also respects VS Code's global telemetry setting.
+- **Data retention:** 30 days rolling on the free tier.
+- **You can leave.** `CodeVibe: Clear All Data` deletes every database and baseline file.
+
+The tension to be honest about: the telemetry endpoint is a real network call to a server we control, and this is an integrity tool. Institutions with strict data-handling rules may want `enableTelemetry: false` mandated up front. It's a one-setting fix; make it explicit rather than assuming.
+
+---
+
+## Requirements & build
+
+VS Code `^1.85.0`, Node `>=20`. A git repository is strongly recommended — without it, detection falls back to line-count baselines, which is less precise and will warn you on launch.
+
+```bash
+git clone https://github.com/waka-man/codevibe.git
+cd codevibe
+npm install
+npm run compile
+npm test              # 1763 tests, 57 suites
+```
+
+<details>
+<summary>Development</summary>
+
+```
+npm run compile      # tsc -p ./
+npm run watch        # tsc --watch
+npm run lint         # eslint src --ext ts
+npm test             # jest --coverage
+npx @vscode/vsce package
+```
+
+**Layout** — `src/storage` (SQLite via `sql.js` WASM) · `src/core` (`MetricsCollector` hub, review scoring) · `src/trackers` (`UnifiedAITracker`, the file watcher) · `src/detection` (`AIDetector`, `ManualDetector`) · `src/assignments` (manager, policy engine, report generator) · `src/cli` (standalone verifier) · `src/utils` (`ExcludedPaths`, `PathAnonymizer`).
+
+**Coverage** is enforced at build time — a global floor plus per-file pins on the modules that decide graded numbers, so a coverage collapse in `FileReviewSessionTracker` or `verify.ts` can't hide behind a healthy global average.
+
+</details>
 
 ---
 
 ## License
 
-**Business Source License 1.1** — free for personal & internal company use, not for a competing commercial extension/SaaS. Converts to `Apache 2.0` on `2027-01-04`. Commercial: `license@codepause.dev`. See `LICENSE.md`.
+**Business Source License 1.1** — free for personal, educational, and research use, and for internal company use. Production use is permitted except for offering a competing commercial product or service. Converts to **Apache 2.0 on 2027-01-04**. See [`LICENSE.md`](LICENSE.md).
 
 ---
 
@@ -245,8 +401,8 @@ Structure: `src/storage` (SQLite `sql.js` WASM, `DatabaseManager.ts:135` wasm pa
 
 **CodeVibe is a ledger, not a judge.**
 
-Pause. Review. Own your code. `codevibe-verify` your proof.
+Pause. Review. Own your code. Then let the hash speak.
 
-<a href="https://github.com/waka-man/codevibe/issues">Report bug</a> · <a href="https://github.com/waka-man/codevibe/discussions">Discussion</a>
+[Report a bug](https://github.com/waka-man/codevibe/issues) · [Discussions](https://github.com/waka-man/codevibe/discussions)
 
 </div>
