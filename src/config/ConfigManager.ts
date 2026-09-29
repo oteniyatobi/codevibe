@@ -16,8 +16,18 @@ import {
 export class ConfigManager {
   private config: UserConfig | null = null;
   private readonly configSection = 'codePause';
+  private onConfigApplied: ((config: UserConfig) => void) | null = null;
 
   constructor(private configRepo: ConfigRepository) {}
+
+  /**
+   * Register a callback invoked after every applied config change.
+   * Used by the extension to push privacy-relevant settings (e.g.
+   * anonymizePaths) into the storage layer without a circular dependency.
+   */
+  setOnConfigApplied(callback: (config: UserConfig) => void): void {
+    this.onConfigApplied = callback;
+  }
 
   async initialize(): Promise<void> {
     // Load config from database
@@ -221,6 +231,11 @@ export class ConfigManager {
     // Apply updates if any
     if (Object.keys(updates).length > 0) {
       this.config = await this.configRepo.updateConfig(updates);
+
+      // Notify listeners (e.g. storage layer) about privacy-relevant changes
+      if (updates.anonymizePaths !== undefined) {
+        this.onConfigApplied?.(this.getConfig());
+      }
 
       // Tamper-evidence: audit every change to the user exclusion list.
       // During an active assignment these customs are ignored (lockdown),

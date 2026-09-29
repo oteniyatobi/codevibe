@@ -261,6 +261,17 @@ async function initializeStorage(
 
   configManager = new ConfigManager(configRepository);
   await configManager.initialize();
+
+  // Apply the anonymizePaths preference to the storage layer, then migrate
+  // any pre-existing absolute paths so old data stops leaking usernames too.
+  const userConfig = await configRepository.getUserConfig();
+  databaseManager.setAnonymizePaths(userConfig.anonymizePaths !== false);
+  databaseManager.migrateAnonymizeExistingPaths();
+
+  // Keep storage in sync if the user toggles the setting at runtime.
+  configManager.setOnConfigApplied((applied) => {
+    databaseManager?.setAnonymizePaths(applied.anonymizePaths !== false);
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

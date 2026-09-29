@@ -29,7 +29,21 @@ export class AIDetector {
   // Method 5: Velocity threshold
   private readonly HIGH_VELOCITY_THRESHOLD = 500; // chars/second
   private readonly VELOCITY_WINDOW_MS = 1000; // 1 second window
-  private recentChanges: Array<{ timestamp: number; chars: number }> = [];
+
+  // Typing-velocity window, tracked PER FILE.
+  //
+  // This used to be one shared array for the whole extension, which
+  // cross-contaminated velocity across files: typing 600 fast chars in a.ts
+  // and then one keystroke in b.ts made that single keystroke inherit
+  // a.ts's 600 chars and cross HIGH_VELOCITY_THRESHOLD, so b.ts got flagged
+  // as AI. Keyed by document URI so each file is measured independently.
+  private recentChangesByFile: Map<
+    string,
+    Array<{ timestamp: number; chars: number }>
+  > = new Map();
+
+  // Bound the map so a long session over many files cannot grow it forever.
+  private readonly MAX_TRACKED_FILES = 100;
 
   // AI marker patterns for Method 4
   private readonly AI_MARKERS = [
@@ -227,7 +241,9 @@ export class AIDetector {
    * Detects AI-generated code by measuring typing velocity. Human developers typically
    * type at 40-120 chars/second, while AI completions appear instantly (thousands of chars/sec).
    *
-   * Uses a 1-second sliding window to calculate velocity from recent changes.
+   * Uses a 1-second sliding window PER FILE to calculate velocity from recent
+   * changes. The window is keyed by document URI, so fast typing in one file
+   * never inflates the measured velocity of another.
    * Velocity >500 chars/second indicates likely AI assistance.
    *
    * Note: This is a heuristic method with MEDIUM confidence because:
@@ -241,17 +257,26 @@ export class AIDetector {
   detectFromVelocity(event: CodeChangeEvent): AIDetectionResult {
     const now = event.timestamp;
     const chars = event.text.length;
+    const fileKey = event.documentUri || '__unknown__';
 
-    // Add to recent changes for velocity calculation
-    this.recentChanges.push({ timestamp: now, chars });
+    // Add to this file's window
+    let window = this.recentChangesByFile.get(fileKey);
+    if (!window) {
+      window = [];
+      this.recentChangesByFile.set(fileKey, window);
+      this.pruneTrackedFiles(fileKey);
+    }
+    window.push({ timestamp: now, chars });
 
-    // Remove changes outside the 1-second sliding window
-    this.recentChanges = this.recentChanges.filter(
+    // Remove changes outside the 1-second sliding window (this file only)
+    const recentChanges = window.filter(
       c => (now - c.timestamp) < this.VELOCITY_WINDOW_MS
     );
+    window.length = 0;
+    window.push(...recentChanges);
 
-    // Calculate current velocity (characters per second)
-    const totalChars = this.recentChanges.reduce((sum, c) => sum + c.chars, 0);
+    // Calculate current velocity (characters per second) for this file
+    const totalChars = recentChanges.reduce((sum, c) => sum + c.chars, 0);
     const velocity = totalChars / (this.VELOCITY_WINDOW_MS / 1000);
 
     // High velocity indicates AI-generated code
@@ -342,37 +367,53 @@ export class AIDetector {
     }
 
     // Method 4: Change velocity
-    // Heuristic detection based on typing speed
+    // Heuristic detection based on typing speed.
+    // NOTE: always run this even when it does not flag - it is what keeps
+    // the per-file velocity window up to date for the next change.
     const velocityResult = this.detectFromVelocity(event);
-    if (velocityResult.isAI) {
-      results.push(velocityResult);
-    }
+    results.push(velocityResult);
 
     // Select and return the highest confidence result
-    return this.selectBestResult(results);
+    return this.selectBestResult(results, event);
   }
 
   /**
    * Select best result from multiple detection methods
    * Priority: HIGH > MEDIUM > LOW
+   *
+   * When nothing was detected, returns an explicit "no AI" result instead of
+   * whatever result happened to be first. Previously it returned results[0],
+   * which mislabelled the detection method on non-AI events (usually
+   * LargePaste regardless of what was actually evaluated). Downstream,
+   * PolicyEngine.classifyEvent() keys off `method`, so a wrong label produced
+   * a wrong policy classification.
    */
-  private selectBestResult(results: AIDetectionResult[]): AIDetectionResult {
-    // Filter to only AI detections
+  private selectBestResult(
+    results: AIDetectionResult[],
+    event: CodeChangeEvent
+  ): AIDetectionResult {
     const aiResults = results.filter(r => r.isAI);
 
     if (aiResults.length === 0) {
-    // No AI detected by any method
-    return results[0] || {
-      isAI: false,
-      confidence: 'low',
-      method: AIDetectionMethod.LargePaste,
-      classification: AIClassification.Permitted,
-      metadata: {
-        charactersCount: 0,
-        linesOfCode: 0,
-        timestamp: Date.now()
-      }
-    };
+      // Nothing detected: report honestly, with the velocity measurement
+      // (the only method that ran for every event) rather than a guess.
+      const velocity = results.find(
+        r => r.method === AIDetectionMethod.ChangeVelocity
+      );
+      return {
+        isAI: false,
+        confidence: 'low',
+        method: AIDetectionMethod.ChangeVelocity,
+        classification: AIClassification.Permitted,
+        metadata: {
+          charactersCount: velocity?.metadata.charactersCount ?? event.text.length,
+          linesOfCode: this.countLines(event.text),
+          timestamp: event.timestamp,
+          ...(velocity?.metadata.velocity !== undefined
+            ? { velocity: velocity.metadata.velocity }
+            : {})
+        }
+      };
     }
 
     // Find highest confidence
@@ -430,9 +471,24 @@ export class AIDetector {
   }
 
   /**
+   * Keep the per-file velocity map bounded. When the cap is exceeded, evict
+   * the least-recently-used file (Map preserves insertion order).
+   */
+  private pruneTrackedFiles(newlyAddedKey: string): void {
+    while (this.recentChangesByFile.size > this.MAX_TRACKED_FILES) {
+      const oldestKey = this.recentChangesByFile.keys().next().value;
+      if (oldestKey === undefined || oldestKey === newlyAddedKey) {
+        // Nothing else to evict (should not happen, but never loop forever)
+        return;
+      }
+      this.recentChangesByFile.delete(oldestKey);
+    }
+  }
+
+  /**
    * Reset velocity tracking (for new session)
    */
   reset(): void {
-    this.recentChanges = [];
+    this.recentChangesByFile.clear();
   }
 }

@@ -99,7 +99,16 @@ export class AssignmentManager {
   /**
    * Update assignment policy or metadata
    */
-  async updateAssignment(id: string, updates: Partial<Omit<Assignment, 'id' | 'createdAt'>>): Promise<Assignment | null> {
+  async updateAssignment(
+    id: string,
+    // policy accepts PARTIAL overrides, matching buildPolicy() and
+    // createAssignment(). It was typed as a full AssignmentPolicy, which made
+    // the documented "update policy" path impossible to call without
+    // constructing a complete policy object by hand.
+    updates: Partial<Omit<Assignment, 'id' | 'createdAt' | 'policy'>> & {
+      policy?: Partial<AssignmentPolicy>;
+    },
+  ): Promise<Assignment | null> {
     const existing = await this.metricsRepo.getAssignment(id);
     if (!existing) {
       return null;

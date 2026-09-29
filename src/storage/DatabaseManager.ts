@@ -45,12 +45,15 @@ import {
   AIDetectionMethod,
 } from "../types";
 import { safeJsonParse } from "../utils/SecurityUtils";
+import { PathAnonymizer } from "../utils/PathAnonymizer";
 
 export class DatabaseManager implements IDatabaseManager {
   private db: SqlJsDatabase | null = null;
   private readonly dbPath: string;
   private readonly workspacePath: string | null;
   private readonly workspaceHash: string;
+  /** Reversible path anonymizer applied to every file_path read/written. */
+  private pathAnonymizer!: PathAnonymizer;
   private autoSaveInterval: NodeJS.Timeout | null = null;
   private operationCount = 0;
   private readonly AUTO_SAVE_INTERVAL_MS = 30000; // 30 seconds
@@ -85,6 +88,11 @@ export class DatabaseManager implements IDatabaseManager {
     this.workspaceHash = this.generateWorkspaceHash(
       this.workspacePath || undefined,
     );
+
+    // Reversible path anonymization for data at rest (codePause.anonymizePaths).
+    // Writes store workspace-relative / ~-relative paths; reads resolve them
+    // back to absolute so in-memory logic and file opening are unaffected.
+    this.pathAnonymizer = new PathAnonymizer(this.workspacePath, true);
 
     // Use workspace-specific path if workspace is provided
     if (this.workspacePath) {
@@ -737,7 +745,8 @@ export class DatabaseManager implements IDatabaseManager {
       event.linesRemoved ?? null, // NEW: Lines removed
       event.charactersCount ?? null,
       event.acceptanceTimeDelta ?? null,
-      event.filePath ?? null,
+      // Anonymize at rest (workspace-relative / ~-relative)
+      this.pathAnonymizer.toStorage(event.filePath) ?? null,
       event.language ?? null,
       event.sessionId ?? null,
       event.metadata ? JSON.stringify(event.metadata) : null,
@@ -790,7 +799,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
     stmt.free();
 
-    return rows.map(this.mapEventRecordToEvent);
+    return rows.map((r) => this.mapEventRecordToEvent(r));
   }
 
   async getSessionEvents(sessionId: string): Promise<TrackingEvent[]> {
@@ -813,7 +822,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
     stmt.free();
 
-    return rows.map(this.mapEventRecordToEvent);
+    return rows.map((r) => this.mapEventRecordToEvent(r));
   }
 
   async getRecentEvents(limit: number): Promise<TrackingEvent[]> {
@@ -836,7 +845,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
     stmt.free();
 
-    return rows.map(this.mapEventRecordToEvent);
+    return rows.map((r) => this.mapEventRecordToEvent(r));
   }
 
   async getDailyMetrics(date: string): Promise<DailyMetrics | null> {
@@ -1290,7 +1299,10 @@ export class DatabaseManager implements IDatabaseManager {
       linesChanged: record.lines_changed ?? undefined,
       charactersCount: record.characters_count ?? undefined,
       acceptanceTimeDelta: record.acceptance_time_delta ?? undefined,
-      filePath: record.file_path ?? undefined,
+      // Resolve anonymized path back to absolute for in-memory use
+      filePath:
+        this.pathAnonymizer.fromStorage(record.file_path ?? undefined) ??
+        undefined,
       language: record.language ?? undefined,
       sessionId: record.session_id ?? undefined,
       // Security: Safe JSON parsing with error handling
@@ -1773,7 +1785,7 @@ export class DatabaseManager implements IDatabaseManager {
     }
     stmt.free();
 
-    return rows.map(this.mapAssignmentRecordToAssignment);
+    return rows.map((r) => this.mapAssignmentRecordToAssignment(r));
   }
 
   async getActiveAssignment(): Promise<Assignment | null> {
@@ -1923,7 +1935,10 @@ export class DatabaseManager implements IDatabaseManager {
       session.reviewTime ?? null,
       JSON.stringify(session.detectionSignals),
       session.confidence,
-      JSON.stringify(session.filesAffected),
+      // Anonymize each affected file path at rest
+      JSON.stringify(
+        session.filesAffected.map((p) => this.pathAnonymizer.toStorage(p) ?? p),
+      ),
       session.alertShown ? 1 : 0,
       session.alertShownAt ?? null,
       session.metadata ? JSON.stringify(session.metadata) : null,
@@ -2000,7 +2015,10 @@ export class DatabaseManager implements IDatabaseManager {
         consistentSource: false,
       }),
       confidence: record.confidence as any,
-      filesAffected: safeJsonParse(record.files_affected, []),
+      // Resolve anonymized paths back to absolute
+      filesAffected: safeJsonParse<string[]>(record.files_affected, []).map(
+        (p) => this.pathAnonymizer.fromStorage(p) ?? p,
+      ),
       alertShown: record.alert_shown === 1,
       alertShownAt: record.alert_shown_at ?? undefined,
       metadata: safeJsonParse(record.metadata, undefined),
@@ -2022,12 +2040,15 @@ export class DatabaseManager implements IDatabaseManager {
     //
     // IMPORTANT: sql.js returns arrays, not objects. Column indices:
     // 0: id, 1: file_path, 2: date, 3: tool, 4: review_quality, 5: review_score, 6: is_reviewed
+    // Anonymize once; used for the existing-record lookup and the write below
+    const storedPath = this.pathAnonymizer.toStorage(status.filePath);
+
     const rawRecord = this.db
       .prepare(`
       SELECT * FROM file_review_status
       WHERE file_path = ? AND date = ? AND tool = ?
     `)
-      .get([status.filePath, status.date, status.tool]);
+      .get([storedPath, status.date, status.tool]);
 
     // sql.js returns an array, not an object with named properties
     const existingRecord = rawRecord as number[] | undefined;
@@ -2156,7 +2177,7 @@ export class DatabaseManager implements IDatabaseManager {
     `);
 
     stmt.bind([
-      status.filePath,
+      storedPath,
       status.date,
       status.tool,
       finalReviewQuality,
@@ -2291,7 +2312,9 @@ export class DatabaseManager implements IDatabaseManager {
     record: FileReviewStatusRecord,
   ): FileReviewStatus {
     return {
-      filePath: record.file_path,
+      // Resolve anonymized path back to absolute for in-memory use
+      filePath:
+        this.pathAnonymizer.fromStorage(record.file_path) ?? record.file_path,
       date: record.date,
       tool: record.tool as AITool,
       reviewQuality: record.review_quality as ReviewQuality,
@@ -2335,6 +2358,9 @@ export class DatabaseManager implements IDatabaseManager {
 
     const now = Date.now();
 
+    // Anonymize at rest so the lookup matches stored rows
+    const storedPath = this.pathAnonymizer.toStorage(filePath);
+
     // CRITICAL FIX: Use actual review time if provided, otherwise calculate expected time
     // actualReviewTime comes from FileReviewSessionTracker (real time user spent)
     // expectedReviewTime is calculated based on lines (fallback for manual reviews)
@@ -2349,7 +2375,7 @@ export class DatabaseManager implements IDatabaseManager {
         SELECT * FROM file_review_status
         WHERE file_path = ? AND tool = ? AND date = ?
       `);
-      const fileData = fileQuery.get([filePath, tool, date]) as
+      const fileData = fileQuery.get([storedPath, tool, date]) as
         | number[]
         | undefined;
 
@@ -2379,6 +2405,101 @@ export class DatabaseManager implements IDatabaseManager {
       WHERE file_path = ? AND tool = ? AND date = ?
     `);
 
-    stmt.run([reviewMethod, now, finalReviewTime, now, filePath, tool, date]);
+    stmt.run([reviewMethod, now, finalReviewTime, now, storedPath, tool, date]);
+  }
+
+  /**
+   * Enable/disable reversible path anonymization for data at rest.
+   * Driven by the `codePause.anonymizePaths` setting (default: true).
+   *
+   * NOTE: toggling only affects future writes. Rows written while disabled
+   * keep their absolute form and are still resolved correctly on read.
+   */
+  setAnonymizePaths(enabled: boolean): void {
+    this.pathAnonymizer.setEnabled(enabled);
+  }
+
+  isAnonymizePathsEnabled(): boolean {
+    return this.pathAnonymizer.isEnabled();
+  }
+
+  /**
+   * One-time migration: rewrite existing absolute file_path values in
+   * anonymized form. Idempotent (toStorage is a no-op on already-anonymized
+   * paths), and safe to run on every startup.
+   *
+   * This is what makes the setting honest for data collected before it was
+   * implemented - otherwise old rows would keep leaking usernames forever.
+   */
+  migrateAnonymizeExistingPaths(): { events: number; fileReviews: number } {
+    if (!this.db || !this.pathAnonymizer.isEnabled()) {
+      return { events: 0, fileReviews: 0 };
+    }
+
+    let events = 0;
+    let fileReviews = 0;
+
+    try {
+      const eventRows = this.db.prepare("SELECT id, file_path FROM events");
+      const eventUpdates: Array<[string, number]> = [];
+      while (eventRows.step()) {
+        const row = eventRows.getAsObject() as unknown as {
+          id: number;
+          file_path: string | null;
+        };
+        if (!row.file_path) {
+          continue;
+        }
+        const anonymized = this.pathAnonymizer.toStorage(row.file_path);
+        if (anonymized && anonymized !== row.file_path) {
+          eventUpdates.push([anonymized, row.id]);
+        }
+      }
+      eventRows.free();
+
+      const reviewRows = this.db.prepare(
+        "SELECT id, file_path FROM file_review_status",
+      );
+      const reviewUpdates: Array<[string, number]> = [];
+      while (reviewRows.step()) {
+        const row = reviewRows.getAsObject() as unknown as {
+          id: number;
+          file_path: string | null;
+        };
+        if (!row.file_path) {
+          continue;
+        }
+        const anonymized = this.pathAnonymizer.toStorage(row.file_path);
+        if (anonymized && anonymized !== row.file_path) {
+          reviewUpdates.push([anonymized, row.id]);
+        }
+      }
+      reviewRows.free();
+
+      for (const [filePath, id] of eventUpdates) {
+        this.db
+          .prepare("UPDATE events SET file_path = ? WHERE id = ?")
+          .run([filePath, id]);
+        events++;
+      }
+      for (const [filePath, id] of reviewUpdates) {
+        this.db
+          .prepare("UPDATE file_review_status SET file_path = ? WHERE id = ?")
+          .run([filePath, id]);
+        fileReviews++;
+      }
+
+      if (events > 0 || fileReviews > 0) {
+        this.incrementOperations();
+        this.sync();
+        console.log(
+          `[CodePause] Anonymized ${events} event path(s) and ${fileReviews} file review path(s)`,
+        );
+      }
+    } catch (error) {
+      console.error("[CodePause] Path anonymization migration failed:", error);
+    }
+
+    return { events, fileReviews };
   }
 }

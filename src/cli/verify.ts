@@ -254,8 +254,27 @@ function renderHuman(results: FileResult[], opts: { useColor: boolean; verbose: 
     const dash = " — ";
     lines.push(`${integrityIcon} ${label}${dash}${integrityText}${dash}${complianceText}`);
 
+    // Guard: a report that failed structural validation is still attached for
+    // diagnostics, but its metrics block may be missing entirely. Without this
+    // check a malformed report crashes the verifier with a TypeError instead
+    // of reporting the validation failure.
+    const hasMetrics =
+      r.report &&
+      typeof r.report.metrics === "object" &&
+      r.report.metrics !== null &&
+      !!r.report.metrics.authorship &&
+      !!r.report.metrics.ownership &&
+      !!r.report.policy;
+
     if (r.report) {
       const rep = r.report;
+      if (!hasMetrics) {
+        if (r.integrityError) {
+          lines.push(`  ${colorize("Reason:", "dim", useColor)} ${r.integrityError}`);
+        }
+        lines.push("");
+        continue;
+      }
       const a = rep.metrics.authorship;
       const o = rep.metrics.ownership;
       const v = r.violations || [];
@@ -544,4 +563,17 @@ if (require.main === module) {
   main();
 }
 
-export { canonicalize, verifyIntegrity, checkCompliance, validateStructure };
+// `main` is exported so the exit-code and argument-parsing behavior can be
+// tested directly - exit codes are the security-relevant contract of this
+// verifier (1 = tampered/non-compliant, 2 = usage error), and asserting them
+// through a spawned process alone is fragile.
+export {
+  canonicalize,
+  verifyIntegrity,
+  checkCompliance,
+  validateStructure,
+  main,
+  parseArgs,
+  renderHuman,
+  renderJson,
+};
