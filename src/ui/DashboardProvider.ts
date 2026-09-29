@@ -8,7 +8,6 @@ import * as path from "path";
 import { MetricsRepository } from "../storage/MetricsRepository";
 import { ConfigRepository } from "../storage/ConfigRepository";
 import { ThresholdManager } from "../core/ThresholdManager";
-import { TelemetryService } from "../telemetry/TelemetryService";
 import { MetricsCollector } from "../core/MetricsCollector";
 import {
   DailyMetrics,
@@ -31,7 +30,6 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   private metricsRepository: MetricsRepository;
   private configRepository: ConfigRepository;
   private thresholdManager: ThresholdManager;
-  private telemetryService?: TelemetryService;
   private metricsCollector?: MetricsCollector;
   private diffViewService: DiffViewService;
   private fileTreeBuilder: FileTreeBuilder;
@@ -43,13 +41,11 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     metricsRepository: MetricsRepository,
     configRepository: ConfigRepository,
     thresholdManager: ThresholdManager,
-    telemetryService?: TelemetryService,
     metricsCollector?: MetricsCollector,
   ) {
     this.metricsRepository = metricsRepository;
     this.configRepository = configRepository;
     this.thresholdManager = thresholdManager;
-    this.telemetryService = telemetryService;
     this.metricsCollector = metricsCollector;
     this.diffViewService = new DiffViewService();
     this.fileTreeBuilder = new FileTreeBuilder();
@@ -679,22 +675,6 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
           }
         }
       }
-
-      // Get session data from FileReviewSessionTracker if available
-      const sessionTracker =
-        this.metricsCollector?.getFileReviewSessionTracker();
-      const session = sessionTracker?.getSession(filePath);
-
-      // Track telemetry event for manual review with session data
-      this.telemetryService?.track("file.reviewed", {
-        method: "manual",
-        triggeredBy: "user",
-        ...(session && {
-          timeInFocus: session.totalTimeInFocus,
-          reviewScore: session.currentReviewScore,
-          reviewQuality: session.currentReviewQuality,
-        }),
-      });
 
       const fileName = filePath.split("/").pop();
       vscode.window.showInformationMessage(`Marked ${fileName} as reviewed`);

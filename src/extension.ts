@@ -15,7 +15,6 @@ import { StatusBarManager } from "./ui/StatusBarManager";
 import { NotificationService } from "./ui/NotificationService";
 import { DashboardProvider } from "./ui/DashboardProvider";
 import { OnboardingManager } from "./onboarding/OnboardingManager";
-import { TelemetryService } from "./telemetry/TelemetryService";
 import { ErrorReporter } from "./errors/ErrorReporter";
 import { ProgressTracker } from "./gamification/ProgressTracker";
 import { AchievementSystem } from "./gamification/AchievementSystem";
@@ -45,11 +44,10 @@ let statusBarManager: StatusBarManager | null = null;
 let notificationService: NotificationService | null = null;
 let dashboardProvider: DashboardProvider | null = null;
 let onboardingManager: OnboardingManager | null = null;
-let telemetryService: TelemetryService | null = null;
-let errorReporter: ErrorReporter | null = null;
 let progressTracker: ProgressTracker | null = null;
 let achievementSystem: AchievementSystem | null = null;
 let snoozeManager: SnoozeManager | null = null;
+let errorReporter: ErrorReporter | null = null;
 let dataExporter: DataExporter | null = null;
 let settingsProvider: SettingsProvider | null = null;
 let alertEngine: AlertEngine | null = null;
@@ -60,13 +58,8 @@ let blindApprovalDetector: BlindApprovalDetector | null = null;
  */
 export async function activate(context: vscode.ExtensionContext) {
   try {
-    // Initialize telemetry first (privacy-first, anonymous)
-    telemetryService = new TelemetryService(context);
-    telemetryService.initialize();
-    telemetryService.trackActivation();
-
-    // Initialize error reporting
-    errorReporter = new ErrorReporter(context, telemetryService);
+    // Initialize error reporting (local only - output channel + user prompt)
+    errorReporter = new ErrorReporter(context);
 
     // Initialize storage
     await initializeStorage(context);
@@ -114,9 +107,6 @@ export async function activate(context: vscode.ExtensionContext) {
     // Report activation error
     if (errorReporter && error instanceof Error) {
       errorReporter.reportError(error, "activation");
-    } else if (telemetryService) {
-      // Fallback to telemetry if ErrorReporter not available
-      telemetryService.trackError("activation");
     }
 
     vscode.window.showErrorMessage(
@@ -151,12 +141,6 @@ function getWorkspacePath(): string | undefined {
  * Extension deactivation
  */
 export async function deactivate() {
-  // Dispose telemetry (flush remaining events)
-  if (telemetryService) {
-    await telemetryService.dispose();
-    telemetryService = null;
-  }
-
   // Dispose error reporting
   if (errorReporter) {
     errorReporter.dispose();
@@ -327,11 +311,10 @@ async function initializeTrackers(
   assignmentManager = new AssignmentManager(metricsRepository);
   policyEngine = new PolicyEngine();
 
-  // Initialize metrics collector with telemetry service and assignment management
+  // Initialize metrics collector with assignment management
   metricsCollector = new MetricsCollector(
     metricsRepository,
     configManager,
-    telemetryService ?? undefined,
     assignmentManager,
     policyEngine,
   );
@@ -364,7 +347,6 @@ async function initializeUI(context: vscode.ExtensionContext): Promise<void> {
     metricsRepository,
     configRepository,
     thresholdManager,
-    telemetryService ?? undefined, // Pass telemetry service for review event tracking
     metricsCollector ?? undefined, // Pass metrics collector to access FileReviewSessionTracker
   );
 
@@ -769,8 +751,6 @@ function registerCommands(context: vscode.ExtensionContext): void {
   const openDashboard = vscode.commands.registerCommand(
     "codePause.openDashboard",
     async () => {
-      telemetryService?.trackCommand("openDashboard");
-
       if (dashboardProvider) {
         // Reveal the view in the sidebar (this will open the sidebar if closed)
         // Using 'workbench.view.extension.codePause' to reveal the entire view container
@@ -793,8 +773,6 @@ function registerCommands(context: vscode.ExtensionContext): void {
   const startOnboarding = vscode.commands.registerCommand(
     "codePause.startOnboarding",
     async () => {
-      telemetryService?.trackCommand("startOnboarding");
-
       if (onboardingManager) {
         await onboardingManager.start();
       } else {

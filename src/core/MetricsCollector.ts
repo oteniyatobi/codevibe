@@ -12,7 +12,6 @@ import { AgentSessionDetector } from './AgentSessionDetector';
 import { FileReviewTracker } from './FileReviewTracker';
 import { FileReviewSessionTracker } from './FileReviewSessionTracker';
 import { EventDeduplicator } from '../tracking/EventDeduplicator';
-import { TelemetryService } from '../telemetry/TelemetryService';
 import { AssignmentManager } from '../assignments/AssignmentManager';
 import { PolicyEngine } from '../assignments/PolicyEngine';
 import { isExcludedFile, sanitizeCustomExclusions } from '../utils/ExcludedPaths';
@@ -53,7 +52,6 @@ export class MetricsCollector implements IMetricsCollector {
   private agentSessionDetector: AgentSessionDetector;
   private fileReviewTracker: FileReviewTracker;
   private fileReviewSessionTracker: FileReviewSessionTracker;
-  private telemetryService?: TelemetryService;
 
   // Assignment tracking
   private assignmentManager: AssignmentManager;
@@ -63,11 +61,9 @@ export class MetricsCollector implements IMetricsCollector {
   constructor(
     private metricsRepo: MetricsRepository,
     private configManager: ConfigManager,
-    telemetryService?: TelemetryService,
     assignmentManager?: AssignmentManager,
     policyEngine?: PolicyEngine
   ) {
-    this.telemetryService = telemetryService;
     // Initialize new components
     const config = this.configManager.getConfig();
     const thresholds = DEFAULT_THRESHOLDS[config.experienceLevel];
@@ -168,15 +164,6 @@ export class MetricsCollector implements IMetricsCollector {
             reviewedInTerminal: false
           });
         }
-
-        // Track telemetry event for automatic review
-        this.telemetryService?.track('file.reviewed', {
-          method: 'automatic',
-          triggeredBy: 'system',
-          reviewScore: session.currentReviewScore,
-          reviewQuality: session.currentReviewQuality,
-          timeInFocus: session.totalTimeInFocus
-        });
 
       });
 

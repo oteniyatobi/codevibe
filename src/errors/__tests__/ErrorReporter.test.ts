@@ -28,7 +28,6 @@ jest.mock('vscode', () => ({
 describe('ErrorReporter', () => {
   let reporter: ErrorReporter;
   let mockContext: any;
-  let mockTelemetryService: any;
   let mockOutputChannel: any;
 
   beforeEach(() => {
@@ -44,11 +43,6 @@ describe('ErrorReporter', () => {
       }
     };
 
-    // Mock telemetry service
-    mockTelemetryService = {
-      trackError: jest.fn()
-    };
-
     // Mock output channel
     mockOutputChannel = {
       clear: jest.fn(),
@@ -59,7 +53,7 @@ describe('ErrorReporter', () => {
 
     (vscode.window.createOutputChannel as jest.Mock).mockReturnValue(mockOutputChannel);
 
-    reporter = new ErrorReporter(mockContext, mockTelemetryService);
+    reporter = new ErrorReporter(mockContext);
   });
 
   describe('initialization', () => {
@@ -67,20 +61,15 @@ describe('ErrorReporter', () => {
       expect(vscode.window.createOutputChannel).toHaveBeenCalledWith('CodeVibe Errors');
     });
 
-    it('should work without telemetry service', () => {
-      const reporterWithoutTelemetry = new ErrorReporter(mockContext);
-      expect(reporterWithoutTelemetry).toBeDefined();
-    });
   });
 
   describe('error reporting', () => {
-    it('should report error and track in telemetry', () => {
+    it('should record the error locally', () => {
       const error = new Error('Test error');
       const errorType = 'database';
 
       reporter.reportError(error, errorType);
 
-      expect(mockTelemetryService.trackError).toHaveBeenCalledWith(errorType);
       expect(reporter.getRecentErrors()).toHaveLength(1);
     });
 
@@ -135,12 +124,12 @@ describe('ErrorReporter', () => {
       );
     });
 
-    it('should work without telemetry service', () => {
-      const reporterWithoutTelemetry = new ErrorReporter(mockContext);
+    it('should not throw for a second independent reporter', () => {
+      const other = new ErrorReporter(mockContext);
       const error = new Error('Test error');
 
       expect(() => {
-        reporterWithoutTelemetry.reportError(error, 'test');
+        other.reportError(error, 'test');
       }).not.toThrow();
     });
   });
@@ -193,7 +182,7 @@ describe('ErrorReporter', () => {
 
       expect(vscode.env.openExternal).toHaveBeenCalled();
       expect(vscode.Uri.parse).toHaveBeenCalledWith(
-        expect.stringContaining('https://github.com/codepause-dev/codepause-extension/issues/new')
+        expect.stringContaining('https://github.com/waka-man/codevibe/issues/new')
       );
     });
 

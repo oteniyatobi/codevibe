@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/version-0.1.9-0a0a0a?style=flat-square&labelColor=0a0a0a&color=00d084" alt="Version 0.1.9">
     <img src="https://img.shields.io/badge/VS_Code-1.85%2B-007ACC?style=flat-square&logo=visual-studio-code" alt="VS Code 1.85+">
     <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js" alt="Node 20+">
-    <img src="https://img.shields.io/badge/tests-1763%20passing-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3fb950" alt="1763 tests passing">
+    <img src="https://img.shields.io/badge/tests-1730%20passing-0a0a0a?style=flat-square&labelColor=0a0a0a&color=3fb950" alt="1730 tests passing">
     <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-Business%20Source%201.1-EEEEEE?style=flat-square&labelColor=0a0a0a&color=EEEEEE" alt="License"></a>
   </p>
 </div>
@@ -212,7 +212,7 @@ Inline completions, large pastes (>500 chars, code-shaped), files modified while
 `excludedGlobs` handles it, except while an assignment is active. If a legitimate folder is being ignored, they can raise it with you — the audit trail shows exactly when and what.
 
 **Is the data private?**
-Local SQLite in `~/.codepause/`. No code content stored. Paths anonymized by default. Anonymous usage telemetry is on by default and can be turned off with `codePause.enableTelemetry` (see [Privacy](#privacy) — it deserves a read before you require this tool of students).
+Local SQLite in `~/.codepause/`. No code content stored. Paths anonymized by default. **No network calls of any kind** — the telemetry code was removed, not disabled. See [Privacy](#privacy), which is the short version: there is no server, and `grep -rn "fetch(" src/` proves it.
 
 ---
 
@@ -338,7 +338,6 @@ The ones that matter:
 | `codePause.blindApprovalThreshold` | `2000` | ms before a fast acceptance is flagged |
 | `codePause.alertFrequency` | `medium` | `low` / `medium` / `high` coaching interruptions |
 | `codePause.anonymizePaths` | `true` | Store workspace-relative paths, not absolute ones |
-| `codePause.enableTelemetry` | `true` | Anonymous usage stats — see [Privacy](#privacy) |
 | `codePause.enableGamification` | `false` | Achievements and progression |
 | `codePause.trackedTools` | all `true` | Which assistants to monitor |
 | `codePause.excludedGlobs` | `[]` | Extra ignore globs — **ignored during active assignments** |
@@ -347,16 +346,50 @@ The ones that matter:
 
 ## Privacy
 
-Worth reading before you require this of students.
+**There is no telemetry, and there is no server.** Not disabled — removed from the codebase. There is no endpoint to turn off, no anonymous ID, no usage ping, nothing to opt out of. This is an independently maintained fork with no relationship to any telemetry infrastructure.
 
-- **Everything is local.** SQLite in `~/.codepause/`, one database per project.
-- **No code content is ever stored** — only line counts, timestamps, scores, and paths.
-- **Paths are anonymized by default.** `src/auth/login.ts`, not `/Users/yourname/…`. Upgrading migrates existing rows.
-- **Telemetry is on by default.** Anonymous events (extension version, platform, command names, error counts) go to `api.codepause.dev`. Any key containing `path`, `file`, `name`, `email`, or `user` is stripped before sending. Set `codePause.enableTelemetry` to `false` to stop it entirely — it also respects VS Code's global telemetry setting.
-- **Data retention:** 30 days rolling on the free tier.
-- **You can leave.** `CodeVibe: Clear All Data` deletes every database and baseline file.
+You can verify that in about thirty seconds:
 
-The tension to be honest about: the telemetry endpoint is a real network call to a server we control, and this is an integrity tool. Institutions with strict data-handling rules may want `enableTelemetry: false` mandated up front. It's a one-setting fix; make it explicit rather than assuming.
+```bash
+# Nothing in the source does any network I/O at all
+grep -rn "fetch(\|XMLHttpRequest\|https://api\." src/ --include="*.ts"
+# → no matches
+```
+
+### What CodeVibe stores
+
+Everything lives in `~/.codepause/` as SQLite, one database per project.
+
+| | |
+|---|---|
+| **Stored** | Line counts, timestamps, review scores, event types, file paths |
+| **Never stored** | Source code, file contents, prompts, diffs, commit messages |
+| **Network** | None. No request is made at any point. |
+| **Retention** | 30 days rolling |
+
+The only file path CodeVibe ever reads is the one VS Code tells it about, and it reads nothing inside it — no content, ever. Just how many lines changed.
+
+### Paths are anonymized by default
+
+`codePause.anonymizePaths` is on out of the box, and it's genuinely applied:
+
+| Path | Stored as |
+|---|---|
+| `/Users/alex/code/company-api/src/auth/login.ts` | `src/auth/login.ts` |
+| `/Users/alex/notes/idea.txt` | `~/notes/idea.txt` |
+| `/tmp/scratch.txt` | `/tmp/scratch.txt` (outside workspace and `$HOME` — kept so the dashboard can still open it) |
+
+Absolute paths embed your OS username and your employer's directory names. Those never reach the database. Upgrading from an older version migrates the existing rows on first launch, so historical data is cleaned up too.
+
+Turning it off stores full paths and lets `CodeVibe: Open File` style flows work identically, at the cost of the disclosure. There's no case where I'd recommend it.
+
+### Errors stay on your machine
+
+`ErrorReporter` writes to a local output channel and, if you click **Report Bug**, opens a GitHub issue form in your browser with the details pre-filled. It never contacts anything itself. Stack traces and context stay in the output channel until you choose to share them.
+
+### Leaving
+
+`CodeVibe: Clear All Data` deletes every database and baseline file. Deleting `~/.codepause/` does the same. Nothing is retained anywhere else, because there is nowhere else.
 
 ---
 
@@ -369,7 +402,7 @@ git clone https://github.com/waka-man/codevibe.git
 cd codevibe
 npm install
 npm run compile
-npm test              # 1763 tests, 57 suites
+npm test              # 1730 tests, 56 suites
 ```
 
 <details>

@@ -212,9 +212,7 @@ export class NotificationService {
       case "learn-more":
         // Open documentation or help page
         await vscode.env.openExternal(
-          vscode.Uri.parse(
-            "https://github.com/codepause-dev/codepause-extension#readme",
-          ),
+          vscode.Uri.parse("https://github.com/waka-man/codevibe#readme"),
         );
         break;
 

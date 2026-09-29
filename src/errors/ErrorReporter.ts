@@ -4,7 +4,6 @@
  */
 
 import * as vscode from 'vscode';
-import { TelemetryService } from '../telemetry/TelemetryService';
 
 export interface ErrorContext {
   errorType: string;
@@ -19,10 +18,7 @@ export class ErrorReporter {
   private readonly maxRecentErrors = 10;
   private outputChannel: vscode.OutputChannel;
 
-  constructor(
-    private context: vscode.ExtensionContext,
-    private telemetryService?: TelemetryService
-  ) {
+  constructor(private context: vscode.ExtensionContext) {
     this.outputChannel = vscode.window.createOutputChannel('CodeVibe Errors');
   }
 
@@ -40,11 +36,6 @@ export class ErrorReporter {
 
     // Log to console
     console.error(`[CodePause Error] ${errorType}:`, error);
-
-    // Track in telemetry (frequency only)
-    if (this.telemetryService) {
-      this.telemetryService.trackError(errorType);
-    }
 
     // Store recent errors
     this.recentErrors.push(errorContext);
@@ -83,7 +74,7 @@ export class ErrorReporter {
     const issueBody = this.generateIssueBody(errorContext);
 
     // Open GitHub issue creation page with pre-filled template
-    const issueUrl = `https://github.com/codepause-dev/codepause-extension/issues/new?` +
+    const issueUrl = `https://github.com/waka-man/codevibe/issues/new?` +
       `title=${encodeURIComponent(`[Bug] ${errorContext.errorType}: ${errorContext.message}`)}&` +
       `body=${encodeURIComponent(issueBody)}&` +
       `labels=bug,auto-reported`;
@@ -97,7 +88,7 @@ export class ErrorReporter {
       );
     } catch (error) {
       console.error('[CodePause] Failed to open bug report URL:', error);
-      vscode.window.showErrorMessage('Failed to open bug report. Please visit github.com/codepause-dev/codepause-extension/issues');
+      vscode.window.showErrorMessage('Failed to open bug report. Please visit github.com/waka-man/codevibe/issues');
     }
   }
 
