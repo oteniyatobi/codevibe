@@ -18,6 +18,9 @@ out/**/*.test.js.map
 coverage/**
 test-data/**
 scripts/**
+# Course/institution material - not part of the extension.
+# docs/ still ships README-adjacent screenshots, so exclude by name.
+docs/ai-verification-instructions.md
 
 # Release artifacts. Without these, every vsix/tgz built in the repo root
 # gets swept into the next vsix (a 0.1.8 vsix shipped a 0.1.4 zip inside it).
