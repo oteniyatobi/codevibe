@@ -8,6 +8,7 @@ import { MetricsRepository } from '../storage/MetricsRepository';
 import { ConfigRepository } from '../storage/ConfigRepository';
 import { ThresholdManager } from '../core/ThresholdManager';
 import { DailyMetrics } from '../types';
+import { toLocalDateString } from '../utils/DateUtils';
 
 export class StatusBarManager {
   private statusBarItem: vscode.StatusBarItem;
@@ -152,7 +153,7 @@ export class StatusBarManager {
 
   private getTodayDateString(): string {
     const now = new Date();
-    return now.toISOString().split('T')[0];
+    return toLocalDateString(now);
   }
 
   async refresh(): Promise<void> {

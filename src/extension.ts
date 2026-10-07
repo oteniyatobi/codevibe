@@ -29,6 +29,7 @@ import { AssignmentReportGenerator } from "./assignments/AssignmentReportGenerat
 import { execSync } from "child_process";
 import { EventType, DeveloperLevel } from "./types";
 import { isGitRepository } from "./utils/SecurityUtils";
+import { getToday } from "./utils/DateUtils";
 
 // Extension state
 let databaseManager: DatabaseManager | null = null;
@@ -489,7 +490,7 @@ async function initializeAlerts(
         return;
       }
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = getToday();
       const metrics = await metricsRepository.getDailyMetrics(today);
 
       if (!metrics || metrics.totalEvents <= 10) {
@@ -978,7 +979,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
         const detectorStats = blindApprovalDetector.getStats();
 
         // Get today's metrics
-        const today = new Date().toISOString().split("T")[0];
+        const today = getToday();
         const metrics = metricsRepository
           ? await metricsRepository.getDailyMetrics(today)
           : null;
@@ -1083,7 +1084,7 @@ function registerCommands(context: vscode.ExtensionContext): void {
 
       const startDate = await vscode.window.showInputBox({
         prompt: "Start date (YYYY-MM-DD)",
-        value: new Date().toISOString().split("T")[0],
+        value: getToday(),
       });
 
       if (!startDate) {

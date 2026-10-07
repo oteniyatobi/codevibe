@@ -22,6 +22,12 @@ import { getDashboardHtml } from "./DashboardHtml";
 import { DiffViewService } from "./DiffViewService";
 import { FileTreeBuilder } from "./FileTreeBuilder";
 import { DiffViewerHelper } from "./DiffViewerHelper";
+import {
+  endOfLocalDay,
+  getToday,
+  startOfLocalDay,
+  toLocalDateString,
+} from "../utils/DateUtils";
 
 export class DashboardProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "codePause.dashboardView";
@@ -278,7 +284,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
     for (let i = 6; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split("T")[0];
+      const dateStr = toLocalDateString(date);
 
       const dayMetrics = await this.metricsRepository.getDailyMetrics(dateStr);
       metrics.push(dayMetrics || this.getEmptyMetrics(dateStr));
@@ -723,8 +729,10 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
 
     // FIX: Filter out files that weren't actually modified today
     // Check: has changes AND timestamp is within today
-    const dayStart = new Date(date + "T00:00:00.000Z").getTime();
-    const dayEnd = dayStart + 86399999;
+    // Local day boundaries - must match MetricsRepository's range, or the
+    // "needs review" list disagrees with the daily metrics for the same day.
+    const dayStart = startOfLocalDay(date);
+    const dayEnd = endOfLocalDay(date);
 
     const unreviewedFiles = allUnreviewedFiles.filter((file) => {
       const hasChanges =
@@ -754,7 +762,7 @@ export class DashboardProvider implements vscode.WebviewViewProvider {
   }
 
   private getTodayDateString(): string {
-    return new Date().toISOString().split("T")[0];
+    return getToday();
   }
 
   /**

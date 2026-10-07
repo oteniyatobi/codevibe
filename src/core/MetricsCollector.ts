@@ -15,6 +15,7 @@ import { EventDeduplicator } from '../tracking/EventDeduplicator';
 import { AssignmentManager } from '../assignments/AssignmentManager';
 import { PolicyEngine } from '../assignments/PolicyEngine';
 import { isExcludedFile, sanitizeCustomExclusions } from '../utils/ExcludedPaths';
+import { getToday } from '../utils/DateUtils';
 import {
   TrackingEvent,
   PendingSuggestion,
@@ -110,7 +111,7 @@ export class MetricsCollector implements IMetricsCollector {
 
       // FIXED: Set callback for immediate database updates when file is reviewed
       this.fileReviewSessionTracker.setReviewCallback(async (session) => {
-        const today = new Date().toISOString().split('T')[0];
+        const today = getToday();
         const config = this.configManager.getConfig();
 
         // CRITICAL FIX: Pass actual review time from session tracking
@@ -205,7 +206,7 @@ export class MetricsCollector implements IMetricsCollector {
    */
   private async restoreUnreviewedFileTracking(): Promise<void> {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getToday();
 
       // Restore ALL files to FileReviewTracker cache
       const allFilesForToday = await this.metricsRepo.getFileReviewsForDate(today);
@@ -364,7 +365,7 @@ export class MetricsCollector implements IMetricsCollector {
     if (event.filePath &&
         (event.eventType === EventType.SuggestionAccepted || event.eventType === EventType.CodeGenerated) &&
         !isManualCode) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getToday();
       const existingStatus = this.fileReviewTracker.getFileStatus(event.filePath, today, event.tool);
 
       // Check if this file was created via terminal workflow
@@ -704,7 +705,7 @@ export class MetricsCollector implements IMetricsCollector {
       await this.flushEventBuffer();
 
       // Sync file review sessions to database
-      const today = new Date().toISOString().split('T')[0];
+      const today = getToday();
       const reviewedFiles = this.fileReviewSessionTracker.getReviewedFiles();
       const unreviewedFiles = this.fileReviewSessionTracker.getUnreviewedFiles();
 
@@ -778,7 +779,7 @@ export class MetricsCollector implements IMetricsCollector {
     currentSession: CodingSession | null;
     pendingSuggestionsCount: number;
   }> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getToday();
     const todayMetrics = await this.getDailyMetrics(today);
 
     return {

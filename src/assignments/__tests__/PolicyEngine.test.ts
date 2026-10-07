@@ -546,14 +546,17 @@ describe("PolicyEngine", () => {
   describe("computeMetrics - tracking gaps", () => {
     it("detects gaps from assignment start and between events", () => {
       assignment.policy = { ...policy, maxTrackingGapSeconds: 1800 };
+      // Local date components: the assignment window now resolves to LOCAL
+      // midnight, so events must be placed against the same local clock or the
+      // first-gap duration is off by the UTC offset (previously 10h, not 8h).
       const events: TrackingEvent[] = [
         manualEvent({
-          timestamp: ts("2025-01-02T08:00:00Z"),
+          timestamp: new Date(2025, 0, 2, 8, 0, 0).getTime(),
           filePath: "/repo/src/a.ts",
           linesChanged: 10,
         }),
         manualEvent({
-          timestamp: ts("2025-01-02T10:00:00Z"),
+          timestamp: new Date(2025, 0, 2, 10, 0, 0).getTime(),
           filePath: "/repo/src/a.ts",
           linesChanged: 10,
         }),
@@ -561,7 +564,7 @@ describe("PolicyEngine", () => {
 
       const metrics = engine.computeMetrics(assignment, events, []);
 
-      // Gap 1: assignment start (2025-01-02T00:00:00Z) -> first event = 8h = 28800s
+      // Gap 1: local midnight on 2025-01-02 -> first event at 08:00 = 8h = 28800s
       // Gap 2: between events = 2h = 7200s
       // No trailing gap: end date is in the past.
       expect(metrics.trackingGaps).toHaveLength(2);

@@ -5,6 +5,7 @@
 jest.mock('../DatabaseManager');
 
 import { MetricsRepository } from '../MetricsRepository';
+import { toLocalDateString } from '../../utils/DateUtils';
 import { DatabaseManager } from '../DatabaseManager';
 import { TrackingEvent, AITool, EventType, CodingSession } from '../../types';
 
@@ -83,7 +84,7 @@ describe('MetricsRepository', () => {
     });
 
     it('should get today metrics', async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString(Date.now());
       mockDb.getDailyMetrics.mockResolvedValue({ date: today, totalEvents: 5 } as any);
       
       const metrics = await metricsRepo.getTodayMetrics();
@@ -249,7 +250,14 @@ describe('MetricsRepository', () => {
 
     it('should calculate AI percentage correctly', async () => {
       const targetDate = '2024-01-01';
-      const dayStart = new Date(targetDate + 'T00:00:00.000Z').getTime();
+      // Local midnight, matching MetricsRepository.calculateDailyMetrics.
+      // The UTC-based literal put these fixtures in the wrong day for anyone
+      // east or west of UTC, so the assertions only held on a UTC machine.
+      const dayStart = new Date(
+        Number(targetDate.slice(0, 4)),
+        Number(targetDate.slice(5, 7)) - 1,
+        Number(targetDate.slice(8, 10)),
+      ).getTime();
 
       mockDb.getEventsByDateRange.mockResolvedValue([
         {
@@ -314,7 +322,7 @@ describe('MetricsRepository', () => {
 
     beforeEach(() => {
       mockDb.getDailyMetrics.mockResolvedValue({
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateString(Date.now()),
         totalEvents: 50,
         totalAILines: 80,
         totalManualLines: 20,
@@ -400,7 +408,14 @@ describe('MetricsRepository', () => {
 
     it('should separate inline and file review times', async () => {
       const targetDate = '2026-01-13';
-      const dayStart = new Date(targetDate + 'T00:00:00.000Z').getTime();
+      // Local midnight, matching MetricsRepository.calculateDailyMetrics.
+      // The UTC-based literal put these fixtures in the wrong day for anyone
+      // east or west of UTC, so the assertions only held on a UTC machine.
+      const dayStart = new Date(
+        Number(targetDate.slice(0, 4)),
+        Number(targetDate.slice(5, 7)) - 1,
+        Number(targetDate.slice(8, 10)),
+      ).getTime();
 
       const events = [
         {
@@ -428,7 +443,14 @@ describe('MetricsRepository', () => {
 
     it('should handle zero file reviews', async () => {
       const targetDate = '2026-01-13';
-      const dayStart = new Date(targetDate + 'T00:00:00.000Z').getTime();
+      // Local midnight, matching MetricsRepository.calculateDailyMetrics.
+      // The UTC-based literal put these fixtures in the wrong day for anyone
+      // east or west of UTC, so the assertions only held on a UTC machine.
+      const dayStart = new Date(
+        Number(targetDate.slice(0, 4)),
+        Number(targetDate.slice(5, 7)) - 1,
+        Number(targetDate.slice(8, 10)),
+      ).getTime();
 
       const events = [
         {
@@ -782,7 +804,12 @@ describe('MetricsRepository', () => {
   describe('BUG #1: Total AI Lines Overcounting Fix', () => {
     it('should calculate totalAILines from file-level data instead of events', async () => {
       const mockDate = '2024-01-01';
-      const dayStart = new Date(mockDate + 'T00:00:00.000Z').getTime();
+      // Local midnight - must match the production day range.
+      const dayStart = new Date(
+        Number(mockDate.slice(0, 4)),
+        Number(mockDate.slice(5, 7)) - 1,
+        Number(mockDate.slice(8, 10)),
+      ).getTime();
 
       // Mock file-level data (source of truth)
       const mockFiles = [
@@ -840,7 +867,12 @@ describe('MetricsRepository', () => {
 
     it('should not double-count lines when same edit generates multiple events', async () => {
       const mockDate = '2024-01-01';
-      const dayStart = new Date(mockDate + 'T00:00:00.000Z').getTime();
+      // Local midnight - must match the production day range.
+      const dayStart = new Date(
+        Number(mockDate.slice(0, 4)),
+        Number(mockDate.slice(5, 7)) - 1,
+        Number(mockDate.slice(8, 10)),
+      ).getTime();
 
       // Single file with 66 lines
       const mockFiles = [
@@ -871,7 +903,12 @@ describe('MetricsRepository', () => {
 
     it('should match file-level total exactly (test case from validation report)', async () => {
       const mockDate = '2024-01-15';
-      const dayStart = new Date(mockDate + 'T00:00:00.000Z').getTime();
+      // Local midnight - must match the production day range.
+      const dayStart = new Date(
+        Number(mockDate.slice(0, 4)),
+        Number(mockDate.slice(5, 7)) - 1,
+        Number(mockDate.slice(8, 10)),
+      ).getTime();
 
       // From test results: 5 files with total 168 lines
       const mockFiles = [

@@ -46,6 +46,7 @@ import {
 } from "../types";
 import { safeJsonParse } from "../utils/SecurityUtils";
 import { PathAnonymizer } from "../utils/PathAnonymizer";
+import { addDays, startOfLocalDay } from "../utils/DateUtils";
 
 export class DatabaseManager implements IDatabaseManager {
   private db: SqlJsDatabase | null = null;
@@ -781,8 +782,11 @@ export class DatabaseManager implements IDatabaseManager {
       throw new Error("Database not initialized");
     }
 
-    const startTimestamp = new Date(startDate).getTime();
-    const endTimestamp = new Date(endDate).getTime() + 86400000;
+    // Resolve to LOCAL day boundaries. `new Date('2026-01-15')` parses as UTC
+    // midnight, which put a local date string against a UTC boundary and
+    // mis-bucketed events for every non-UTC user.
+    const startTimestamp = startOfLocalDay(startDate);
+    const endTimestamp = startOfLocalDay(addDays(endDate, 1));
 
     const stmt = this.db.prepare(`
       SELECT * FROM events
@@ -1838,8 +1842,11 @@ export class DatabaseManager implements IDatabaseManager {
     // assignment was created or while it was inactive). Events tagged to a
     // different assignment are never pulled in. The window end includes the
     // full end day, matching PolicyEngine.detectTrackingGaps.
-    const windowStart = new Date(assignment.startDate).getTime();
-    const windowEnd = new Date(assignment.endDate).getTime() + 86400000;
+    // Local day boundaries, consistent with PolicyEngine.detectTrackingGaps and
+    // the daily-metrics range. All three must agree or a graded report can
+    // disagree with the dashboard it was exported from.
+    const windowStart = startOfLocalDay(assignment.startDate);
+    const windowEnd = startOfLocalDay(addDays(assignment.endDate, 1));
 
     const stmt = this.db.prepare(`
       SELECT * FROM events

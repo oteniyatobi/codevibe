@@ -3,6 +3,7 @@
  * Classifies AI events and evaluates them against an assignment policy.
  */
 
+import { addDays, startOfLocalDay } from "../utils/DateUtils";
 import {
   TrackingEvent,
   Assignment,
@@ -360,8 +361,11 @@ export class PolicyEngine {
     thresholdMs: number,
   ): TrackingGap[] {
     const gaps: TrackingGap[] = [];
-    const startTime = new Date(startDate).getTime();
-    const endTime = new Date(endDate).getTime() + 86400000; // Include full end day
+    // Local day boundaries - must match DatabaseManager.getEventsForAssignment
+    // and MetricsRepository.calculateDailyMetrics, or the report and the
+    // dashboard disagree about which events belong to the assignment.
+    const startTime = startOfLocalDay(startDate);
+    const endTime = startOfLocalDay(addDays(endDate, 1)); // Include full end day
     const now = Date.now();
 
     const sorted = [...events].sort((a, b) => a.timestamp - b.timestamp);

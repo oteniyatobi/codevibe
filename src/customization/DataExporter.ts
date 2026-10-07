@@ -8,6 +8,7 @@ import { MetricsRepository } from '../storage/MetricsRepository';
 import { ConfigRepository } from '../storage/ConfigRepository';
 import { ExportData } from '../types';
 import { safeJsonParse, isValidImportFileSize } from '../utils/SecurityUtils';
+import { toLocalDateString } from '../utils/DateUtils';
 
 export class DataExporter {
   private metricsRepository: MetricsRepository;
@@ -67,8 +68,8 @@ export class DataExporter {
       const exportData = {
         exportDate: new Date().toISOString(),
         dateRange: {
-          start: startDate.toISOString().split('T')[0],
-          end: endDate.toISOString().split('T')[0]
+          start: toLocalDateString(startDate),
+          end: toLocalDateString(endDate)
         },
         metrics,
         summary: this.calculateSummary(metrics)
@@ -235,8 +236,8 @@ export class DataExporter {
     return {
       exportDate: new Date().toISOString(),
       dateRange: {
-        start: startDate.toISOString().split('T')[0],
-        end: endDate.toISOString().split('T')[0]
+        start: toLocalDateString(startDate),
+        end: toLocalDateString(endDate)
       },
       metrics,
       summary: this.calculateSummary(metrics),
@@ -250,7 +251,7 @@ export class DataExporter {
     const currentDate = new Date(startDate);
 
     while (currentDate <= endDate) {
-      const dateStr = currentDate.toISOString().split('T')[0];
+      const dateStr = toLocalDateString(currentDate);
       const dayMetrics = await this.metricsRepository.getDailyMetrics(dateStr);
 
       if (dayMetrics) {

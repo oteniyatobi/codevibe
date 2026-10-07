@@ -4247,9 +4247,13 @@ describe("DatabaseManager", () => {
       };
       await dbManager.insertOrUpdateAssignment(assignment);
 
-      const inWindow = new Date("2026-09-10T12:00:00Z").getTime();
-      const outWindow = new Date("2026-08-15T12:00:00Z").getTime();
-      const lastDayEvening = new Date("2026-09-30T23:00:00Z").getTime();
+      // Built from LOCAL date components, because the assignment window now
+      // resolves to local day boundaries. The previous UTC-based literals
+      // (e.g. 2026-09-30T23:00Z) are 23:00 UTC, which is not local evening -
+      // and on the day the window ends, that distinction decides membership.
+      const inWindow = new Date(2026, 8, 10, 12, 0, 0).getTime();
+      const outWindow = new Date(2026, 7, 15, 12, 0, 0).getTime();
+      const lastDayEvening = new Date(2026, 8, 30, 23, 0, 0).getTime();
 
       const makeEvent = (overrides: Partial<TrackingEvent>): TrackingEvent => ({
         timestamp: inWindow,

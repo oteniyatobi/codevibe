@@ -7,6 +7,7 @@ import { MetricsRepository } from '../storage/MetricsRepository';
 import { ConfigRepository } from '../storage/ConfigRepository';
 import { UserProgression, XP_THRESHOLDS } from '../types';
 import * as vscode from 'vscode';
+import { toLocalDateString } from '../utils/DateUtils';
 
 export class ProgressTracker {
   private metricsRepository: MetricsRepository;
@@ -202,7 +203,7 @@ export class ProgressTracker {
     for (let i = 0; i < 365; i++) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = toLocalDateString(date);
 
       const metrics = await this.metricsRepository.getDailyMetrics(dateStr);
 

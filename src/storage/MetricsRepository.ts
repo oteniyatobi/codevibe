@@ -6,6 +6,14 @@
 import { DatabaseManager } from "./DatabaseManager";
 import { isExcludedFile } from "../utils/ExcludedPaths";
 import {
+  addDays,
+  endOfLocalDay,
+  getToday,
+  localDayRange,
+  startOfLocalDay,
+  toLocalDateString,
+} from "../utils/DateUtils";
+import {
   TrackingEvent,
   DailyMetrics,
   ToolMetrics,
@@ -54,7 +62,7 @@ export class MetricsRepository {
       if (event.file_path && isExcludedFile(event.file_path, extraGlobs)) {
         excludedEventIds.push(event.id);
         affectedDates.add(
-          new Date(event.timestamp).toISOString().split("T")[0],
+          toLocalDateString(event.timestamp),
         );
       }
     }
@@ -190,12 +198,13 @@ export class MetricsRepository {
         experienceLevel === "junior" ? 60 : experienceLevel === "mid" ? 50 : 40;
 
       let streak = 0;
-      const checkDate = new Date();
+      // Local calendar day, walked backwards as a date string so DST
+      // transitions cannot skip or repeat a day.
+      let dateString = getToday();
 
       // Go backwards from today, counting consecutive balanced days
       for (let i = 0; i < 90; i++) {
         // Check up to 90 days back
-        const dateString = checkDate.toISOString().split("T")[0];
         const metrics = await this.getDailyMetrics(dateString);
 
         // Check if this day had activity and was balanced
@@ -212,7 +221,7 @@ export class MetricsRepository {
         // No activity = skip (weekends/days off don't break streak)
 
         // Move to previous day
-        checkDate.setDate(checkDate.getDate() - 1);
+        dateString = addDays(dateString, -1);
       }
 
       return streak;
@@ -223,11 +232,11 @@ export class MetricsRepository {
   }
 
   async calculateDailyMetrics(date: string): Promise<DailyMetrics> {
-    // FIX: Use proper timestamp range to avoid timezone issues
-    // Parse date as UTC to ensure consistent behavior across timezones
-    const dateObj = new Date(date + "T00:00:00.000Z");
-    const startOfDay = dateObj.getTime();
-    const endOfDay = startOfDay + 24 * 60 * 60 * 1000 - 1; // 86399999ms = 23:59:59.999
+    // Resolve the LOCAL day boundaries. `new Date(date + 'T00:00:00.000Z')`
+    // parsed as UTC midnight, which is up to 14h from local midnight, so
+    // events were attributed to the wrong day for non-UTC users.
+    const { start: startOfDay, end: endOfDayExclusive } = localDayRange(date);
+    const endOfDay = endOfDayExclusive - 1;
 
     // Use getEventsByDateRange which takes timestamps directly
     const events = await this.db.getEventsByDateRange(startOfDay, endOfDay);
@@ -253,13 +262,13 @@ export class MetricsRepository {
     date: string,
     events: TrackingEvent[],
   ): Promise<DailyMetrics> {
-    // CRITICAL FIX: Filter events to ONLY include the exact date
-    // This prevents timezone issues from including events from adjacent days
+    // CRITICAL FIX: Filter events to ONLY include the exact date.
+    // Must use the SAME local-day basis as calculateDailyMetrics' range, or
+    // the filter and the range disagree and events fall through the cracks.
     const targetDate = date; // YYYY-MM-DD format
     const dateFilteredEvents = events.filter((event) => {
-      const eventDate = new Date(event.timestamp).toISOString().split("T")[0];
-      const matches = eventDate === targetDate;
-      return matches;
+      const eventDate = toLocalDateString(event.timestamp);
+      return eventDate === targetDate;
     });
 
     // BUG #1 FIX: Use file-level totals instead of event-based totals
@@ -272,8 +281,8 @@ export class MetricsRepository {
 
     // Calculate total AI lines from ALL files with changes today (reviewed or not)
     // Filter: has changes AND timestamp is within this date
-    const dayStart = new Date(date + "T00:00:00.000Z").getTime();
-    const dayEnd = dayStart + 86399999;
+    const dayStart = startOfLocalDay(date);
+    const dayEnd = endOfLocalDay(date);
 
     const totalAILines = allFilesForAuthorship.reduce((sum: number, file) => {
       const hasChanges =
@@ -1249,7 +1258,7 @@ export class MetricsRepository {
       }
       seen.add(key);
 
-      const day = new Date(event.timestamp).toISOString().split("T")[0];
+      const day = toLocalDateString(event.timestamp);
       const review = await this.getFileReviewStatus(
         event.filePath,
         event.tool,
@@ -1274,12 +1283,10 @@ export class MetricsRepository {
   }
 
   private getTodayString(): string {
-    return new Date().toISOString().split("T")[0];
+    return getToday();
   }
 
   private getDateStringDaysAgo(days: number): string {
-    const date = new Date();
-    date.setDate(date.getDate() - days);
-    return date.toISOString().split("T")[0];
+    return addDays(getToday(), -days);
   }
 }

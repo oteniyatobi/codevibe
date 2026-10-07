@@ -8,6 +8,7 @@ import { ConfigRepository } from '../storage/ConfigRepository';
 import { ProgressTracker } from './ProgressTracker';
 import { Achievement, DailyMetrics } from '../types';
 import * as vscode from 'vscode';
+import { getToday, toLocalDateString } from '../utils/DateUtils';
 
 export class AchievementSystem {
   private metricsRepository: MetricsRepository;
@@ -374,7 +375,7 @@ export class AchievementSystem {
     for (let i = 0; i < 7; i++) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = toLocalDateString(date);
 
       const dayMetrics = await this.metricsRepository.getDailyMetrics(dateStr);
       if (dayMetrics) {
@@ -391,7 +392,7 @@ export class AchievementSystem {
   }
 
   private getTodayDateString(): string {
-    return new Date().toISOString().split('T')[0];
+    return getToday();
   }
 
   dispose(): void {
